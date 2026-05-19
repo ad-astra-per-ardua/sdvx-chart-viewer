@@ -8,12 +8,6 @@ from .database import Base
 
 FALLBACK_JACKET_URL = "/uploads/PTnXJN2w2xo_600px-Generic_Jacket_EG.png"
 
-song_tag = Table(
-    "song_tag", Base.metadata,
-    Column("song_id", Integer, ForeignKey("songs.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
-)
-
 chart_tag = Table(
     "chart_tag", Base.metadata,
     Column("chart_id", Integer, ForeignKey("charts.id", ondelete="CASCADE"), primary_key=True),
@@ -46,7 +40,6 @@ class Song(Base):
                           cascade="all, delete-orphan",
                           order_by="Chart.id",
                           lazy="select")
-    tags = relationship("Tag", secondary=song_tag, lazy="noload")
 
 
 class Chart(Base):

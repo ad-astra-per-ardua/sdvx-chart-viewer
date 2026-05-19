@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 import orjson
 from fastapi import FastAPI, Depends, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,52 +64,28 @@ def get_meta(response: Response, db: Session = Depends(get_db)):
 def list_songs(
         response: Response,
         db: Session = Depends(get_db),
-        level_min: float = Query(1.0, ge=1.0, le=20.9),
-        level_max: float = Query(20.9, ge=1.0, le=20.9),
-        difficulties: Optional[List[str]] = Query(None),
-        tags: Optional[List[str]] = Query(None),
-        quick_level: Optional[int] = Query(None, ge=1, le=20),
         sort: str = Query("new", regex="^(new|level_asc|level_desc)$"),
         q: Optional[str] = Query(None),
         limit: Optional[int] = Query(None, ge=1, le=500),
-        offset: int = Query(0, ge=0),
 ):
     response.headers["Cache-Control"] = "public, max-age=15"
 
-    conds = ["c.level >= :level_min", "c.level <= :level_max"]
-    params: dict = {"level_min": level_min, "level_max": level_max}
-
-    if difficulties:
-        placeholders = ", ".join(f":diff_{i}" for i in range(len(difficulties)))
-        conds.append(f"c.difficulty IN ({placeholders})")
-        for i, d in enumerate(difficulties):
-            params[f"diff_{i}"] = d
-
-    if quick_level is not None:
-        conds.append("c.level >= :ql_min AND c.level < :ql_max")
-        params["ql_min"] = float(quick_level)
-        params["ql_max"] = float(quick_level) + 1.0
-
+    # The frontend loads the full set once and filters client-side; only
+    # text search (used by the Megamix picker) is still done server-side.
+    conds = ["c.level >= 1"]
+    params: dict = {}
     if q:
         conds.append("(s.title LIKE :q OR s.artist LIKE :q OR s.keywords LIKE :q)")
         params["q"] = f"%{q}%"
 
-    tag_joins = ""
-    if tags:
-        for i, tag_name in enumerate(tags):
-            tag_joins += (
-                f" JOIN chart_tag ct{i} ON ct{i}.chart_id = c.id"
-                f" JOIN tags t{i} ON t{i}.id = ct{i}.tag_id AND t{i}.name = :tag_{i}"
-            )
-            params[f"tag_{i}"] = tag_name
-
+    # "new" order is resolved in SQL so no Python sort is needed for it.
     sql = sql_text(
         "SELECT s.id, s.title, s.artist, s.keywords, s.created_at,"
         "       c.id AS chart_id, c.difficulty, c.level, c.jacket_url AS chart_jacket"
         " FROM songs s"
         " JOIN charts c ON c.song_id = s.id"
-        f"{tag_joins}"
         f" WHERE {' AND '.join(conds)}"
+        " ORDER BY s.created_at DESC, s.id, c.id"
     )
 
     # Fetch all chart tags in one indexed query (empty table = instant)
@@ -130,8 +106,9 @@ def list_songs(
     for row in rows:
         sid = row[0]
         lv = row[7]
-        if sid not in songs_map:
-            songs_map[sid] = {
+        s = songs_map.get(sid)
+        if s is None:
+            s = songs_map[sid] = {
                 "id": sid,
                 "title": row[1],
                 "artist": row[2],
@@ -140,9 +117,9 @@ def list_songs(
                 "_max": lv,
                 "charts": [],
             }
-        elif lv > songs_map[sid]["_max"]:
-            songs_map[sid]["_max"] = lv
-        songs_map[sid]["charts"].append({
+        elif lv > s["_max"]:
+            s["_max"] = lv
+        s["charts"].append({
             "id": row[5],
             "difficulty": row[6],
             "level": lv,
@@ -152,17 +129,15 @@ def list_songs(
 
     songs_list = list(songs_map.values())
 
-    if sort == "new":
-        songs_list.sort(key=lambda s: s["created_at"] or "", reverse=True)
-    elif sort == "level_desc":
+    if sort == "level_desc":
         songs_list.sort(key=lambda s: s["_max"], reverse=True)
-    else:
+    elif sort == "level_asc":
         songs_list.sort(key=lambda s: s["_max"])
 
     total = len(songs_list)
 
     if limit is not None:
-        songs_list = songs_list[offset: offset + limit]
+        songs_list = songs_list[:limit]
 
     fallback = models.FALLBACK_JACKET_URL
     for s in songs_list:

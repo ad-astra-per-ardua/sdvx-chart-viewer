@@ -62,5 +62,4 @@ export interface SongQuery {
   sort: "new" | "level_asc" | "level_desc";
   q?: string;
   limit?: number;
-  offset?: number;
 }

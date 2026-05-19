@@ -2,18 +2,12 @@ import type { ChartDetailDto, FilterMeta, Song, SongQuery } from "../types";
 
 const API_BASE = "";
 
+// Server-side filtering moved fully client-side; only these reach the API.
 function toParams(q: Partial<SongQuery>): string {
   const p = new URLSearchParams();
-  if (q.level_min !== undefined) p.set("level_min", String(q.level_min));
-  if (q.level_max !== undefined) p.set("level_max", String(q.level_max));
-  if (q.sort)                    p.set("sort",      q.sort);
-  if (q.quick_level !== undefined && q.quick_level !== null)
-    p.set("quick_level", String(q.quick_level));
-  if (q.q)                       p.set("q", q.q);
-  if (q.limit  !== undefined)    p.set("limit",  String(q.limit));
-  if (q.offset !== undefined)    p.set("offset", String(q.offset));
-  for (const d of q.difficulties ?? []) p.append("difficulties", d);
-  for (const t of q.tags         ?? []) p.append("tags",         t);
+  if (q.sort)                p.set("sort",  q.sort);
+  if (q.q)                   p.set("q",     q.q);
+  if (q.limit !== undefined) p.set("limit", String(q.limit));
   return p.toString();
 }
 

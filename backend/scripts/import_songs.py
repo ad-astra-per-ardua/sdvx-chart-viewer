@@ -55,7 +55,6 @@ def main() -> None:
 
     out("Clearing existing data ...")
     cur.execute("DELETE FROM chart_tag")
-    cur.execute("DELETE FROM song_tag")
     cur.execute("DELETE FROM chart_images")
     cur.execute("DELETE FROM charts")
     cur.execute("DELETE FROM songs")
