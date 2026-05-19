@@ -39,8 +39,7 @@ export const adminLogin = (token: string) =>
     adminAuth.token = token;
   });
 
-export const adminListSongs   = (q?: string) =>
-  req<SongAdmin[]>(`/api/admin/songs${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+export const adminListSongs = () => req<SongAdmin[]>("/api/admin/songs");
 
 export const adminGetSong = (id: number) =>
   req<SongAdmin>(`/api/admin/songs/${id}`);

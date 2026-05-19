@@ -29,7 +29,7 @@ export default function AdminLayout() {
           })}
         </nav>
         <div className="admin-actions">
-          <Link to="/" className="ghost">↗ 사이트 보기</Link>
+          <button className="ghost" onClick={() => { location.href = "/"; }}>↗ 사이트 보기</button>
           <button className="ghost" onClick={() => {
             adminAuth.clear(); setAuthed(false); nav("/admin");
           }}>로그아웃</button>

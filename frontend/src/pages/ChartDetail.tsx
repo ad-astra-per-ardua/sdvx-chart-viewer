@@ -29,7 +29,7 @@ export default function ChartDetail() {
 
   return (
     <div className="detail-shell">
-      <Link to="/" className="back-link">← 목록으로</Link>
+      <button onClick={()=>{location.href="/"}} className="ghost">← 목록으로</button>
 
       <div className="detail-top">
         {jacketUrl
@@ -51,7 +51,7 @@ export default function ChartDetail() {
               >
                 <span className="lbl">{c.difficulty}</span>
                 <span className="lv">
-                  {Number.isInteger(c.level) ? c.level : c.level.toFixed(1)}
+                  {c.level >= 18 || !Number.isInteger(c.level) ? c.level.toFixed(1) : c.level}
                 </span>
               </div>
             ))}

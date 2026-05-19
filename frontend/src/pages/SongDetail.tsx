@@ -20,7 +20,7 @@ export default function SongDetail() {
   if (!song) return <div className="detail-shell">불러오는 중…</div>;
   return (
     <div className="detail-shell">
-      <Link to="/" className="back-link">← 목록으로</Link>
+      <button onClick={()=>{location.href="/"}} className="Ghost">← 목록으로</button>
       <h1>{song.title}</h1>
     </div>
   );

@@ -1,6 +1,57 @@
 import { useEffect, useRef, useState } from "react";
 import type { Difficulty, FilterMeta, SongQuery } from "../types";
 
+const SDVX_LEVELS: number[] = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+  17, 17.5,
+  ...Array.from({ length: 30 }, (_, i) => Math.round((18 + i * 0.1) * 10) / 10),
+];
+
+function fmtLv(v: number): string {
+  return v >= 18 || !Number.isInteger(v) ? v.toFixed(1) : String(v);
+}
+
+function stepLv(v: number, dir: 1 | -1): number {
+  const idx = SDVX_LEVELS.indexOf(v);
+  if (idx === -1) {
+    return SDVX_LEVELS.reduce((best, lv) =>
+      Math.abs(lv - v) < Math.abs(best - v) ? lv : best
+    );
+  }
+  return SDVX_LEVELS[Math.max(0, Math.min(SDVX_LEVELS.length - 1, idx + dir))];
+}
+
+function LevelStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const timer   = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const interval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stop = () => {
+    if (timer.current)    { clearTimeout(timer.current);    timer.current = null; }
+    if (interval.current) { clearInterval(interval.current); interval.current = null; }
+  };
+
+  const start = (dir: 1 | -1) => {
+    stop();
+    const step = () => onChange(stepLv(valueRef.current, dir));
+    step();
+    timer.current = setTimeout(() => {
+      interval.current = setInterval(step, 80);
+    }, 350);
+  };
+
+  useEffect(() => stop, []);
+
+  return (
+    <div className="level-stepper">
+      <button onPointerDown={(e) => { e.preventDefault(); start(-1); }} onPointerUp={stop} onPointerLeave={stop}>−</button>
+      <span className="level-val">{fmtLv(value)}</span>
+      <button onPointerDown={(e) => { e.preventDefault(); start(+1); }} onPointerUp={stop} onPointerLeave={stop}>+</button>
+    </div>
+  );
+}
+
 interface Props {
   meta: FilterMeta | null;
   query: SongQuery;
@@ -52,7 +103,7 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
   return (
     <aside className="sidebar">
       <div className="row-header">
-        <h3>고급 필터</h3>
+        <h3>필터</h3>
         <button className="reset-btn" onClick={onReset}>↺ 초기화</button>
       </div>
 
@@ -66,11 +117,9 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
 
       <div className="section-label">레벨</div>
       <div className="level-range">
-        <input type="number" min={1} max={20} value={query.level_min}
-               onChange={(e) => onLevelMin(parseInt(e.target.value || "1", 10))} />
-        <span>~</span>
-        <input type="number" min={1} max={20.9} step={0.1} value={query.level_max}
-               onChange={(e) => onLevelMax(parseFloat(e.target.value || "20.9"))} />
+        <LevelStepper value={query.level_min} onChange={onLevelMin} />
+        <span className="level-tilde">~</span>
+        <LevelStepper value={query.level_max} onChange={onLevelMax} />
       </div>
 
       <div className="section-label">난이도</div>

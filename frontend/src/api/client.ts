@@ -10,6 +10,8 @@ function toParams(q: Partial<SongQuery>): string {
   if (q.quick_level !== undefined && q.quick_level !== null)
     p.set("quick_level", String(q.quick_level));
   if (q.q)                       p.set("q", q.q);
+  if (q.limit  !== undefined)    p.set("limit",  String(q.limit));
+  if (q.offset !== undefined)    p.set("offset", String(q.offset));
   for (const d of q.difficulties ?? []) p.append("difficulties", d);
   for (const t of q.tags         ?? []) p.append("tags",         t);
   return p.toString();
@@ -21,10 +23,14 @@ export async function fetchMeta(): Promise<FilterMeta> {
   return r.json();
 }
 
-export async function fetchSongs(q: Partial<SongQuery>): Promise<Song[]> {
+export async function fetchSongs(
+  q: Partial<SongQuery>,
+): Promise<{ songs: Song[]; total: number }> {
   const r = await fetch(`${API_BASE}/api/songs?${toParams(q)}`);
   if (!r.ok) throw new Error(`songs ${r.status}`);
-  return r.json();
+  const songs: Song[] = await r.json();
+  const total = parseInt(r.headers.get("X-Total-Count") ?? String(songs.length), 10);
+  return { songs, total };
 }
 
 export async function fetchSong(id: number): Promise<Song> {

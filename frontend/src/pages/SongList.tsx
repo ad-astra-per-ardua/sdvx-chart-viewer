@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import FilterSidebar from "../components/FilterSidebar";
 import LevelQuickBar from "../components/LevelQuickBar";
 import SongRow from "../components/SongRow";
@@ -15,26 +16,85 @@ const DEFAULT_QUERY: SongQuery = {
   q: "",
 };
 
+function applyFilter(all: Song[], query: SongQuery, searchIndex: string[]): Song[] {
+  const { level_min, level_max, difficulties, tags, quick_level, sort, q } = query;
+  const diffSet      = new Set(difficulties);
+  const lq           = q ? q.toLowerCase() : "";
+  const hasDiff      = diffSet.size > 0;
+  const hasTag       = tags.length > 0;
+  const hasText      = lq.length > 0;
+  const hasLevel     = quick_level !== undefined || level_min !== 1 || level_max !== 20.9;
+  const out: Array<{ song: Song; maxLevel: number }> = [];
+
+  for (let i = 0; i < all.length; i++) {
+    if (hasText && !searchIndex[i].includes(lq)) continue;
+    const song = all[i];
+    let charts = song.charts;
+
+    if (hasDiff)
+      charts = charts.filter(c => diffSet.has(c.difficulty));
+
+    if (quick_level !== undefined) {
+      charts = charts.filter(c => c.level >= quick_level && c.level < quick_level + 1);
+    } else if (hasLevel) {
+      charts = charts.filter(c => c.level >= level_min && c.level <= level_max);
+    }
+
+    if (hasTag)
+      charts = charts.filter(c => tags.every(t => c.tags.some(ct => ct.name === t)));
+
+    if (charts.length === 0) continue;
+
+    let maxLevel = 0;
+    for (const c of charts) if (c.level > maxLevel) maxLevel = c.level;
+
+    out.push({ song: charts === song.charts ? song : { ...song, charts }, maxLevel });
+  }
+
+  if (sort === "new") return out.map(x => x.song);
+  out.sort((a, b) =>
+    sort === "level_desc" ? b.maxLevel - a.maxLevel : a.maxLevel - b.maxLevel
+  );
+  return out.map(x => x.song);
+}
+
 export default function SongList() {
-  const [meta,  setMeta]  = useState<FilterMeta | null>(null);
-  const [query, setQuery] = useState<SongQuery>(DEFAULT_QUERY);
-  const [songs, setSongs] = useState<Song[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [meta,     setMeta]     = useState<FilterMeta | null>(null);
+  const [query,    setQuery]    = useState<SongQuery>(DEFAULT_QUERY);
+  const [allSongs, setAllSongs] = useState<Song[]>([]);
+  const [loading,  setLoading]  = useState(true);
 
   useEffect(() => { fetchMeta().then(setMeta).catch(console.error); }, []);
-
   useEffect(() => {
-    setLoading(true);
-    fetchSongs(query)
-      .then(setSongs)
+    let cancelled = false;
+    fetchSongs({})
+      .then(({ songs }) => {
+        if (!cancelled) startTransition(() => setAllSongs(songs));
+      })
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [JSON.stringify(query)]);
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const searchIndex = useMemo(
+    () => allSongs.map(s => `${s.title} ${s.artist} ${s.keywords ?? ""}`.toLowerCase()),
+    [allSongs],
+  );
+
+  const deferredQuery = useDeferredValue(query);
+  const isPending     = query !== deferredQuery;
+  const songs = useMemo(
+    () => applyFilter(allSongs, deferredQuery, searchIndex),
+    [allSongs, deferredQuery, searchIndex],
+  );
 
   const titleTargets = useMemo(() => {
     const map = new Map<number, number>();
     for (const s of songs) {
-      const top = [...s.charts].sort((a, b) => b.level - a.level)[0];
+      const top = s.charts.reduce<Song["charts"][0] | null>(
+        (best, c) => (!best || c.level > best.level ? c : best),
+        null,
+      );
       if (top) map.set(s.id, top.id);
     }
     return map;
@@ -44,7 +104,7 @@ export default function SongList() {
     <div className="app-shell">
       <div className="discover-header">
         <div className="left">
-          <div className="label">DISCOVER</div>
+          <div className="label">TOTAL</div>
           <div className="count">
             {songs.length.toLocaleString()}<span className="unit">곡</span>
           </div>
@@ -61,8 +121,9 @@ export default function SongList() {
           <button
             className={query.sort === "new" ? "active" : ""}
             onClick={() => setQuery({ ...query, sort: "new" })}
-          >신곡</button>
+          >최신</button>
         </div>
+        <Link to="/megamix" className="megamix-nav-btn">좋은 승부</Link>
       </div>
 
       <LevelQuickBar
@@ -72,8 +133,8 @@ export default function SongList() {
 
       <FilterSidebar meta={meta} query={query} setQuery={setQuery} />
 
-      <div className="song-list">
-        {loading && songs.length === 0
+      <div className="song-list" style={isPending ? { opacity: 0.6, transition: "opacity 0.15s" } : undefined}>
+        {loading
           ? <div className="empty">불러오는 중…</div>
           : songs.length === 0
             ? <div className="empty">조건에 맞는 곡이 없어요. 필터를 풀어보세요.</div>

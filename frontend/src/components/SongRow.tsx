@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Difficulty, Song } from "../types";
 
@@ -9,7 +10,7 @@ interface Props {
   titleTargetChartId: number;
 }
 
-export default function SongRow({ song, titleTargetChartId }: Props) {
+export default memo(function SongRow({ song, titleTargetChartId }: Props) {
   const nav = useNavigate();
   const byDiff = new Map(song.charts.map((c) => [c.difficulty, c]));
 
@@ -41,11 +42,11 @@ export default function SongRow({ song, titleTargetChartId }: Props) {
               title={`Go to ${d} ${c.level}`}
             >
               <span className="lbl">{d}</span>
-              <span className="lv">{Number.isInteger(c.level) ? c.level : c.level.toFixed(1)}</span>
+              <span className="lv">{c.level >= 18 || !Number.isInteger(c.level) ? c.level.toFixed(1) : c.level}</span>
             </div>
           );
         })}
       </div>
     </div>
   );
-}
+});

@@ -5,7 +5,9 @@ import shutil
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
+import orjson
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Response, UploadFile, status
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session, selectinload
 
 from . import models, schemas
@@ -85,19 +87,59 @@ def _build_admin_song_out(s: models.Song) -> schemas.SongAdminOut:
     )
 
 
-@router.get("/songs", response_model=List[schemas.SongAdminOut], dependencies=[Depends(require_admin)])
-def admin_list_songs(db: Session = Depends(get_db), q: str | None = None):
-    qry = (db.query(models.Song)
-           .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
-           .order_by(models.Song.created_at.desc()))
-    if q:
-        like = f"%{q}%"
-        qry = qry.filter(
-            (models.Song.title.ilike(like)) |
-            (models.Song.artist.ilike(like)) |
-            (models.Song.keywords.ilike(like))
-        )
-    return [_build_admin_song_out(s) for s in qry.all()]
+@router.get("/songs", dependencies=[Depends(require_admin)])
+def admin_list_songs(response: Response, db: Session = Depends(get_db)):
+    tag_rows = db.execute(sql_text(
+        "SELECT ct.chart_id, t.id, t.name FROM chart_tag ct JOIN tags t ON t.id = ct.tag_id"
+    )).fetchall()
+    tags_by_chart: dict = {}
+    for tr in tag_rows:
+        tags_by_chart.setdefault(tr[0], []).append({"id": tr[1], "name": tr[2]})
+
+    rows = db.execute(sql_text(
+        "SELECT s.id, s.title, s.artist, s.keywords, s.created_at,"
+        "       c.id AS chart_id, c.difficulty, c.level, c.jacket_url AS chart_jacket"
+        " FROM songs s"
+        " LEFT JOIN charts c ON c.song_id = s.id"
+        " ORDER BY s.created_at DESC, c.id"
+    )).fetchall()
+
+    songs_map: dict = {}
+    for row in rows:
+        sid = row[0]
+        if sid not in songs_map:
+            songs_map[sid] = {
+                "id": sid,
+                "title": row[1],
+                "artist": row[2],
+                "keywords": row[3] or "",
+                "created_at": row[4],
+                "_max_lv": -1.0,
+                "charts": [],
+            }
+        if row[5] is not None:
+            lv = row[7]
+            songs_map[sid]["charts"].append({
+                "id": row[5],
+                "difficulty": row[6],
+                "level": lv,
+                "jacket_url": row[8],
+                "tags": tags_by_chart.get(row[5], []),
+            })
+            if lv > songs_map[sid]["_max_lv"]:
+                songs_map[sid]["_max_lv"] = lv
+
+    fallback = models.FALLBACK_JACKET_URL
+    for s in songs_map.values():
+        del s["_max_lv"]
+        top = max(s["charts"], key=lambda c: c["level"], default=None)
+        s["jacket_url"] = (top["jacket_url"] if top else None) or fallback
+
+    response.headers["Cache-Control"] = "no-store"
+    return Response(
+        content=orjson.dumps(list(songs_map.values())),
+        media_type="application/json",
+    )
 
 
 @router.get("/songs/{song_id}", response_model=schemas.SongAdminOut, dependencies=[Depends(require_admin)])

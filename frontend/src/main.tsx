@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import SongList    from "./pages/SongList";
 import SongDetail  from "./pages/SongDetail";
 import ChartDetail from "./pages/ChartDetail";
+import Megamix     from "./pages/Megamix";
 
 import AdminLayout   from "./pages/admin/AdminLayout";
 import AdminSongList from "./pages/admin/AdminSongList";
@@ -18,6 +19,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/"           element={<SongList />} />
+        <Route path="/megamix"    element={<Megamix />} />
         <Route path="/songs/:id"  element={<SongDetail />} />
         <Route path="/charts/:id" element={<ChartDetail />} />
 

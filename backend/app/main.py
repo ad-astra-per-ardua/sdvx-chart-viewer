@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Optional
+import orjson
 from fastapi import FastAPI, Depends, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -26,13 +27,14 @@ for _stmt in [
 
 app = FastAPI(title="SDVX Megamix Chart Viewer API")
 
-app.add_middleware(GZipMiddleware, minimum_size=512)
+app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=5)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
@@ -58,8 +60,9 @@ def get_meta(response: Response, db: Session = Depends(get_db)):
     return schemas.FilterMeta(difficulties=diffs, tags=tags, level_min=1, level_max=20.9)
 
 
-@app.get("/api/songs", response_model=List[schemas.SongListItem])
+@app.get("/api/songs")
 def list_songs(
+        response: Response,
         db: Session = Depends(get_db),
         level_min: float = Query(1.0, ge=1.0, le=20.9),
         level_max: float = Query(20.9, ge=1.0, le=20.9),
@@ -68,65 +71,107 @@ def list_songs(
         quick_level: Optional[int] = Query(None, ge=1, le=20),
         sort: str = Query("new", regex="^(new|level_asc|level_desc)$"),
         q: Optional[str] = Query(None),
+        limit: Optional[int] = Query(None, ge=1, le=500),
+        offset: int = Query(0, ge=0),
 ):
-    stmt = select(models.Chart.id, models.Chart.song_id).where(
-        models.Chart.level >= level_min,
-        models.Chart.level <= level_max,
-    )
+    response.headers["Cache-Control"] = "public, max-age=15"
+
+    conds = ["c.level >= :level_min", "c.level <= :level_max"]
+    params: dict = {"level_min": level_min, "level_max": level_max}
+
     if difficulties:
-        stmt = stmt.where(models.Chart.difficulty.in_(difficulties))
+        placeholders = ", ".join(f":diff_{i}" for i in range(len(difficulties)))
+        conds.append(f"c.difficulty IN ({placeholders})")
+        for i, d in enumerate(difficulties):
+            params[f"diff_{i}"] = d
+
     if quick_level is not None:
-        stmt = stmt.where(
-            models.Chart.level >= float(quick_level),
-            models.Chart.level < float(quick_level) + 1.0,
-        )
-    if tags:
-        for tag_name in tags:
-            stmt = stmt.where(models.Chart.tags.any(models.Tag.name == tag_name))
+        conds.append("c.level >= :ql_min AND c.level < :ql_max")
+        params["ql_min"] = float(quick_level)
+        params["ql_max"] = float(quick_level) + 1.0
 
-    rows = db.execute(stmt).all()
-    if not rows:
-        return []
-
-    matching_chart_ids = {r.id for r in rows}
-    matching_song_ids = {r.song_id for r in rows}
-
-    song_q = (
-        db.query(models.Song)
-        .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
-        .filter(models.Song.id.in_(matching_song_ids))
-    )
     if q:
-        like = f"%{q}%"
-        song_q = song_q.filter(
-            (models.Song.title.ilike(like)) |
-            (models.Song.artist.ilike(like)) |
-            (models.Song.keywords.ilike(like))
-        )
+        conds.append("(s.title LIKE :q OR s.artist LIKE :q OR s.keywords LIKE :q)")
+        params["q"] = f"%{q}%"
+
+    tag_joins = ""
+    if tags:
+        for i, tag_name in enumerate(tags):
+            tag_joins += (
+                f" JOIN chart_tag ct{i} ON ct{i}.chart_id = c.id"
+                f" JOIN tags t{i} ON t{i}.id = ct{i}.tag_id AND t{i}.name = :tag_{i}"
+            )
+            params[f"tag_{i}"] = tag_name
+
+    sql = sql_text(
+        "SELECT s.id, s.title, s.artist, s.keywords, s.created_at,"
+        "       c.id AS chart_id, c.difficulty, c.level, c.jacket_url AS chart_jacket"
+        " FROM songs s"
+        " JOIN charts c ON c.song_id = s.id"
+        f"{tag_joins}"
+        f" WHERE {' AND '.join(conds)}"
+    )
+
+    # Fetch all chart tags in one indexed query (empty table = instant)
+    tag_rows = db.execute(sql_text(
+        "SELECT ct.chart_id, t.id, t.name FROM chart_tag ct JOIN tags t ON t.id = ct.tag_id"
+    )).fetchall()
+    tags_by_chart: dict = {}
+    for tr in tag_rows:
+        tags_by_chart.setdefault(tr[0], []).append({"id": tr[1], "name": tr[2]})
+
+    rows = db.execute(sql, params).fetchall()
+
+    if not rows:
+        response.headers["X-Total-Count"] = "0"
+        return Response(content=b"[]", media_type="application/json")
+
+    songs_map: dict = {}
+    for row in rows:
+        sid = row[0]
+        lv = row[7]
+        if sid not in songs_map:
+            songs_map[sid] = {
+                "id": sid,
+                "title": row[1],
+                "artist": row[2],
+                "keywords": row[3] or "",
+                "created_at": row[4],
+                "_max": lv,
+                "charts": [],
+            }
+        elif lv > songs_map[sid]["_max"]:
+            songs_map[sid]["_max"] = lv
+        songs_map[sid]["charts"].append({
+            "id": row[5],
+            "difficulty": row[6],
+            "level": lv,
+            "jacket_url": row[8],
+            "tags": tags_by_chart.get(row[5], []),
+        })
+
+    songs_list = list(songs_map.values())
 
     if sort == "new":
-        song_q = song_q.order_by(models.Song.created_at.desc())
-        songs = song_q.all()
+        songs_list.sort(key=lambda s: s["created_at"] or "", reverse=True)
+    elif sort == "level_desc":
+        songs_list.sort(key=lambda s: s["_max"], reverse=True)
     else:
-        songs = song_q.all()
+        songs_list.sort(key=lambda s: s["_max"])
 
-        def _level_key(s: models.Song) -> float:
-            lvs = [c.level for c in s.charts if c.id in matching_chart_ids]
-            return max(lvs) if lvs else 0.0
+    total = len(songs_list)
 
-        songs.sort(key=_level_key, reverse=(sort == "level_desc"))
+    if limit is not None:
+        songs_list = songs_list[offset: offset + limit]
 
-    out: List[schemas.SongListItem] = []
-    for s in songs:
-        visible = [c for c in s.charts if c.id in matching_chart_ids]
-        top = max(visible, key=lambda c: c.level, default=None)
-        jacket = (top.jacket_url if top else None) or models.FALLBACK_JACKET_URL
-        out.append(schemas.SongListItem(
-            id=s.id, title=s.title, artist=s.artist,
-            jacket_url=jacket, created_at=s.created_at,
-            charts=[schemas.ChartOut.model_validate(c) for c in visible],
-        ))
-    return out
+    fallback = models.FALLBACK_JACKET_URL
+    for s in songs_list:
+        del s["_max"]
+        top = max(s["charts"], key=lambda c: c["level"], default=None)
+        s["jacket_url"] = (top["jacket_url"] if top else None) or fallback
+
+    response.headers["X-Total-Count"] = str(total)
+    return Response(content=orjson.dumps(songs_list), media_type="application/json")
 
 
 @app.get("/api/songs/{song_id}", response_model=schemas.SongDetail)
@@ -162,7 +207,7 @@ def get_chart(chart_id: int, response: Response, db: Session = Depends(get_db)):
         raise HTTPException(404, "Chart not found")
     return schemas.ChartDetail(
         id=c.id, difficulty=c.difficulty, level=c.level,
-        jacket_url=c.jacket_url,
+        jacket_url=c.jacket_url or models.FALLBACK_JACKET_URL,
         song=_song_detail(c.song, c.song.charts),
         images=[schemas.ChartImageOut.model_validate(i) for i in c.images],
         tags=[schemas.TagOut.model_validate(t) for t in c.tags],
