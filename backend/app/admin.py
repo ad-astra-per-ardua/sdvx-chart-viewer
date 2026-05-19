@@ -1,30 +1,3 @@
-"""
-Admin router — all routes here require a valid X-Admin-Token header.
-
-Endpoints
-─────────
-  Auth
-    POST /api/admin/login              { token } → 200 if matches ADMIN_TOKEN
-  Uploads
-    POST /api/admin/upload             multipart/form-data file=...
-  Songs
-    GET    /api/admin/songs            list (admin view, no chart pruning)
-    POST   /api/admin/songs            create
-    PUT    /api/admin/songs/{id}       update (partial)
-    DELETE /api/admin/songs/{id}       delete
-  Charts
-    POST   /api/admin/charts           create
-    PUT    /api/admin/charts/{id}      update
-    DELETE /api/admin/charts/{id}      delete
-  Chart images
-    POST   /api/admin/chart-images     create
-    DELETE /api/admin/chart-images/{id} delete
-  Tags
-    GET    /api/admin/tags             list
-    POST   /api/admin/tags             create
-    DELETE /api/admin/tags/{id}        delete
-"""
-
 import os
 import re
 import secrets
@@ -48,7 +21,7 @@ UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-MAX_UPLOAD_BYTES = 8 * 1024 * 1024  # 8 MB
+MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
 def _admin_token() -> str:
@@ -56,26 +29,19 @@ def _admin_token() -> str:
 
 
 def require_admin(x_admin_token: str = Header(default="")) -> None:
-    """Constant-time check against the configured admin token."""
     expected = _admin_token()
     if not secrets.compare_digest(x_admin_token or "", expected):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid admin token")
 
 
-# ── Auth ─────────────────────────────────────────────────────────────────────
 @router.post("/login")
 def login(payload: dict):
-    """
-    Tiny convenience endpoint so the frontend can validate the token the user
-    entered before storing it.  Returns 204 on success.
-    """
     token = (payload or {}).get("token", "")
     if not secrets.compare_digest(token, _admin_token()):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid admin token")
     return {"ok": True}
 
 
-# ── Uploads ──────────────────────────────────────────────────────────────────
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -85,11 +51,9 @@ def upload(file: UploadFile = File(...)):
     if ext not in ALLOWED_EXT:
         raise HTTPException(400, f"unsupported extension {ext!r}")
 
-    # Random prefix → avoids collisions and prevents the user from controlling
-    # the final filename (path-traversal/MIME-sniff protection).
     safe = _SAFE_NAME.sub("_", Path(file.filename or "f").stem)[:60] or "file"
     final = f"{secrets.token_urlsafe(8)}_{safe}{ext}"
-    dest  = UPLOAD_DIR / final
+    dest = UPLOAD_DIR / final
 
     size = 0
     with dest.open("wb") as f:
@@ -109,48 +73,70 @@ def upload(file: UploadFile = File(...)):
     return UploadResponse(url=url, filename=final, size=size)
 
 
-# ── Songs (admin view = no chart pruning) ────────────────────────────────────
-@router.get("/songs", response_model=List[schemas.SongListItem], dependencies=[Depends(require_admin)])
+def _build_admin_song_out(s: models.Song) -> schemas.SongAdminOut:
+    top = max(s.charts, key=lambda c: c.level, default=None)
+    effective_jacket = (top.jacket_url if top else None) or models.FALLBACK_JACKET_URL
+    return schemas.SongAdminOut(
+        id=s.id, title=s.title, artist=s.artist,
+        jacket_url=effective_jacket,
+        created_at=s.created_at,
+        keywords=s.keywords or "",
+        charts=[schemas.ChartOut.model_validate(c) for c in s.charts],
+    )
+
+
+@router.get("/songs", response_model=List[schemas.SongAdminOut], dependencies=[Depends(require_admin)])
 def admin_list_songs(db: Session = Depends(get_db), q: str | None = None):
     qry = (db.query(models.Song)
-             .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
-             .order_by(models.Song.created_at.desc()))
+           .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
+           .order_by(models.Song.created_at.desc()))
     if q:
         like = f"%{q}%"
-        qry = qry.filter((models.Song.title.ilike(like)) | (models.Song.artist.ilike(like)))
-    songs = qry.all()
-    out = []
-    for s in songs:
-        effective_jacket = s.jacket_url or next(
-            (c.jacket_url for c in s.charts if c.jacket_url), None
+        qry = qry.filter(
+            (models.Song.title.ilike(like)) |
+            (models.Song.artist.ilike(like)) |
+            (models.Song.keywords.ilike(like))
         )
-        out.append(schemas.SongListItem(
-            id=s.id, title=s.title, artist=s.artist,
-            jacket_url=effective_jacket,
-            created_at=s.created_at,
-            charts=[schemas.ChartOut.model_validate(c) for c in s.charts],
-        ))
-    return out
+    return [_build_admin_song_out(s) for s in qry.all()]
 
 
-@router.post("/songs", response_model=schemas.SongDetail, dependencies=[Depends(require_admin)])
+@router.get("/songs/{song_id}", response_model=schemas.SongAdminOut, dependencies=[Depends(require_admin)])
+def admin_get_song(song_id: int, db: Session = Depends(get_db)):
+    s = (db.query(models.Song)
+         .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
+         .filter(models.Song.id == song_id)
+         .first())
+    if not s:
+        raise HTTPException(404, "song not found")
+    return _build_admin_song_out(s)
+
+
+@router.post("/songs", response_model=schemas.SongAdminOut, dependencies=[Depends(require_admin)])
 def admin_create_song(payload: SongCreate, db: Session = Depends(get_db)):
-    song = models.Song(title=payload.title, artist=payload.artist, jacket_url="")
-    db.add(song); db.commit(); db.refresh(song)
-    return song
+    song = models.Song(title=payload.title, artist=payload.artist,
+                       keywords=payload.keywords)
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+    return _build_admin_song_out(song)
 
 
-@router.put("/songs/{song_id}", response_model=schemas.SongDetail, dependencies=[Depends(require_admin)])
+@router.put("/songs/{song_id}", response_model=schemas.SongAdminOut, dependencies=[Depends(require_admin)])
 def admin_update_song(song_id: int, payload: SongUpdate, db: Session = Depends(get_db)):
-    song = db.query(models.Song).filter(models.Song.id == song_id).first()
+    song = (db.query(models.Song)
+            .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
+            .filter(models.Song.id == song_id)
+            .first())
     if not song:
         raise HTTPException(404, "song not found")
 
-    if payload.title  is not None: song.title  = payload.title
+    if payload.title is not None: song.title = payload.title
     if payload.artist is not None: song.artist = payload.artist
+    if payload.keywords is not None: song.keywords = payload.keywords
 
-    db.commit(); db.refresh(song)
-    return song
+    db.commit()
+    db.refresh(song)
+    return _build_admin_song_out(song)
 
 
 @router.delete("/songs/{song_id}", status_code=204, dependencies=[Depends(require_admin)])
@@ -158,18 +144,18 @@ def admin_delete_song(song_id: int, db: Session = Depends(get_db)):
     song = db.query(models.Song).filter(models.Song.id == song_id).first()
     if not song:
         raise HTTPException(404, "song not found")
-    db.delete(song); db.commit()
+    db.delete(song)
+    db.commit()
 
 
-# ── Charts ───────────────────────────────────────────────────────────────────
 @router.post("/charts", response_model=schemas.ChartOut, dependencies=[Depends(require_admin)])
 def admin_create_chart(payload: ChartCreate, db: Session = Depends(get_db)):
     if not db.query(models.Song).filter(models.Song.id == payload.song_id).first():
         raise HTTPException(404, "song not found")
     existing = (db.query(models.Chart)
-                  .filter(models.Chart.song_id == payload.song_id,
-                          models.Chart.difficulty == payload.difficulty)
-                  .first())
+                .filter(models.Chart.song_id == payload.song_id,
+                        models.Chart.difficulty == payload.difficulty)
+                .first())
     if existing:
         raise HTTPException(409, f"chart for {payload.difficulty} already exists on this song")
     chart = models.Chart(song_id=payload.song_id,
@@ -178,31 +164,32 @@ def admin_create_chart(payload: ChartCreate, db: Session = Depends(get_db)):
                          jacket_url=payload.jacket_url)
     if payload.tag_ids:
         chart.tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
-    db.add(chart); db.commit()
+    db.add(chart)
+    db.commit()
     return (db.query(models.Chart)
-              .options(selectinload(models.Chart.tags))
-              .filter(models.Chart.id == chart.id)
-              .first())
+            .options(selectinload(models.Chart.tags))
+            .filter(models.Chart.id == chart.id)
+            .first())
 
 
 @router.put("/charts/{chart_id}", response_model=schemas.ChartOut, dependencies=[Depends(require_admin)])
 def admin_update_chart(chart_id: int, payload: ChartUpdate, db: Session = Depends(get_db)):
     chart = (db.query(models.Chart)
-               .options(selectinload(models.Chart.tags))
-               .filter(models.Chart.id == chart_id)
-               .first())
+             .options(selectinload(models.Chart.tags))
+             .filter(models.Chart.id == chart_id)
+             .first())
     if not chart:
         raise HTTPException(404, "chart not found")
     if payload.difficulty is not None: chart.difficulty = payload.difficulty
-    if payload.level      is not None: chart.level      = payload.level
+    if payload.level is not None: chart.level = payload.level
     if payload.jacket_url is not None: chart.jacket_url = payload.jacket_url or None
-    if payload.tag_ids    is not None:
+    if payload.tag_ids is not None:
         chart.tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
     db.commit()
     return (db.query(models.Chart)
-              .options(selectinload(models.Chart.tags))
-              .filter(models.Chart.id == chart_id)
-              .first())
+            .options(selectinload(models.Chart.tags))
+            .filter(models.Chart.id == chart_id)
+            .first())
 
 
 @router.delete("/charts/{chart_id}", status_code=204, dependencies=[Depends(require_admin)])
@@ -210,10 +197,10 @@ def admin_delete_chart(chart_id: int, db: Session = Depends(get_db)):
     chart = db.query(models.Chart).filter(models.Chart.id == chart_id).first()
     if not chart:
         raise HTTPException(404, "chart not found")
-    db.delete(chart); db.commit()
+    db.delete(chart)
+    db.commit()
 
 
-# ── Chart images ─────────────────────────────────────────────────────────────
 @router.post("/chart-images", response_model=schemas.ChartImageOut, dependencies=[Depends(require_admin)])
 def admin_create_chart_image(payload: ChartImageCreate, db: Session = Depends(get_db)):
     if not db.query(models.Chart).filter(models.Chart.id == payload.chart_id).first():
@@ -222,7 +209,9 @@ def admin_create_chart_image(payload: ChartImageCreate, db: Session = Depends(ge
                             image_url=payload.image_url,
                             order_idx=payload.order_idx,
                             part=payload.part)
-    db.add(img); db.commit(); db.refresh(img)
+    db.add(img)
+    db.commit()
+    db.refresh(img)
     return img
 
 
@@ -231,10 +220,10 @@ def admin_delete_chart_image(image_id: int, db: Session = Depends(get_db)):
     img = db.query(models.ChartImage).filter(models.ChartImage.id == image_id).first()
     if not img:
         raise HTTPException(404, "image not found")
-    db.delete(img); db.commit()
+    db.delete(img)
+    db.commit()
 
 
-# ── Tags ─────────────────────────────────────────────────────────────────────
 @router.get("/tags", response_model=List[schemas.TagOut], dependencies=[Depends(require_admin)])
 def admin_list_tags(db: Session = Depends(get_db)):
     return db.query(models.Tag).order_by(models.Tag.name).all()
@@ -246,7 +235,9 @@ def admin_create_tag(payload: TagCreate, db: Session = Depends(get_db)):
     if existing:
         return existing
     t = models.Tag(name=payload.name)
-    db.add(t); db.commit(); db.refresh(t)
+    db.add(t)
+    db.commit()
+    db.refresh(t)
     return t
 
 
@@ -255,4 +246,5 @@ def admin_delete_tag(tag_id: int, db: Session = Depends(get_db)):
     t = db.query(models.Tag).filter(models.Tag.id == tag_id).first()
     if not t:
         raise HTTPException(404, "tag not found")
-    db.delete(t); db.commit()
+    db.delete(t)
+    db.commit()

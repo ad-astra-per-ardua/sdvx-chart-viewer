@@ -1,18 +1,8 @@
-"""
-Seed mock data for local development.
-
-Run:
-    cd backend
-    python -m app.seed
-"""
-
-from datetime import datetime, timedelta
+from datetime import *
 from .database import engine, SessionLocal, Base
 from . import models
 
 
-# ── Mock catalog: pulled from the discovery screenshot the user shared. ──────
-# Each entry: (title, artist, [(diff, level), ...], [tags])
 MOCK_SONGS = [
     ("Dement ~After Legend~",     "Cosmograph",
         [("NOV", 6), ("ADV", 13), ("EXH", 16), ("MXM", 18.5)], ["PEAK", "NOTES"]),
@@ -38,7 +28,6 @@ MOCK_SONGS = [
         [("NOV", 6), ("ADV", 13), ("EXH", 16), ("MXM", 18.4)], ["PEAK", "TRICKY"]),
     ("G.L.I.T.C.H.",              "Yuta Imai feat. 重音テト",
         [("NOV", 6), ("ADV", 13), ("EXH", 16), ("MXM", 18.4)], ["NOTES"]),
-    # A few extras at lower levels so the level quick-filter has interesting hits.
     ("Twilight Drive",            "demo artist A",
         [("NOV", 2), ("ADV", 7),  ("EXH", 10), ("MXM", 13)],   ["ONE-HAND"]),
     ("Neon Pulse",                "demo artist B",
@@ -51,13 +40,11 @@ ALL_TAGS = ["NOTES", "PEAK", "TSUMAMI", "TRICKY", "HAND-TRIP", "ONE-HAND"]
 
 
 def seed():
-    # Reset & recreate schema.
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
     try:
-        # 1. Tags.
         tag_map = {}
         for t in ALL_TAGS:
             obj = models.Tag(name=t)
@@ -65,21 +52,17 @@ def seed():
             tag_map[t] = obj
         db.flush()
 
-        # 2. Songs / charts / images.
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for idx, (title, artist, charts, tags) in enumerate(MOCK_SONGS):
             song = models.Song(
                 title=title,
                 artist=artist,
-                # Use picsum.photos seeded by title for a deterministic jacket.
                 jacket_url=f"https://picsum.photos/seed/{abs(hash(title)) % 10**8}/200/200",
-                # Newest first in the list — earlier MOCK_SONGS items are "newer".
                 created_at=now - timedelta(days=idx),
                 tags=[tag_map[t] for t in tags if t in tag_map],
             )
             for diff, lvl in charts:
                 chart = models.Chart(difficulty=diff, level=float(lvl))
-                # 3 demo pattern images per chart (horizontally scrollable area).
                 for i in range(3):
                     chart.images.append(models.ChartImage(
                         image_url=f"https://picsum.photos/seed/{abs(hash((title, diff, i))) % 10**8}/600/900",

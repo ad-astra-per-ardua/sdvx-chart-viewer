@@ -33,6 +33,10 @@ export interface Song {
   charts: Chart[];
 }
 
+export interface SongAdmin extends Song {
+  keywords: string;
+}
+
 export interface ChartDetailDto {
   id: number;
   difficulty: Difficulty;

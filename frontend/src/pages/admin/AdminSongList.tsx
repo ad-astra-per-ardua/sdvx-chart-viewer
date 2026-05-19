@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { adminDeleteSong, adminListSongs } from "../../api/admin";
-import type { Song } from "../../types";
+import type {Song, SongAdmin} from "../../types";
 
-/** Top-level admin page — list all songs with edit/delete affordances. */
 export default function AdminSongList() {
-  const [songs, setSongs] = useState<Song[]>([]);
+  const [songs, setSongs] = useState<SongAdmin[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const nav = useNavigate();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = (query = q) => {
     setBusy(true);
@@ -19,6 +19,12 @@ export default function AdminSongList() {
   };
 
   useEffect(() => { load(""); }, []);
+
+  const onQChange = (val: string) => {
+    setQ(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => load(val), 300);
+  };
 
   const onDelete = async (s: Song) => {
     if (!confirm(`"${s.title}" 곡을 삭제하시겠습니까?\n(연결된 모든 패턴과 이미지도 함께 삭제됩니다.)`)) return;
@@ -37,8 +43,8 @@ export default function AdminSongList() {
           className="search-input"
           placeholder="제목 / 아티스트 검색"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") load(); }}
+          onChange={(e) => onQChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { if (debounceRef.current) clearTimeout(debounceRef.current); load(q); } }}
         />
         <button className="secondary" onClick={() => load()}>검색</button>
         <button className="primary" onClick={() => nav("/admin/songs/new")}>+ 곡 추가</button>

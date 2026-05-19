@@ -1,6 +1,6 @@
 import type { ChartDetailDto, FilterMeta, Song, SongQuery } from "../types";
 
-const API_BASE = ""; // vite proxy → http://localhost:8000
+const API_BASE = "";
 
 function toParams(q: Partial<SongQuery>): string {
   const p = new URLSearchParams();

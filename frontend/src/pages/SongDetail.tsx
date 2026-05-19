@@ -3,11 +3,6 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import { fetchSong } from "../api/client";
 import type { Song } from "../types";
 
-/**
- * Song-level landing page (used when a user navigates directly to /songs/:id).
- * The discover list itself always jumps to /charts/:id — this page exists for
- * deep links / shared URLs.  It auto-redirects to the song's highest chart.
- */
 export default function SongDetail() {
   const { id } = useParams();
   const nav = useNavigate();

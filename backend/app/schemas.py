@@ -1,5 +1,3 @@
-"""Pydantic schemas — the API contract."""
-
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
@@ -29,7 +27,6 @@ class ChartImageOut(BaseModel):
 
 
 class SongListItem(BaseModel):
-    """Row used in the discover list."""
     model_config = ConfigDict(from_attributes=True)
     id: int
     title: str
@@ -40,8 +37,11 @@ class SongListItem(BaseModel):
 
 
 class SongDetail(SongListItem):
-    """Same as list item for now — kept separate so we can grow it."""
     pass
+
+
+class SongAdminOut(SongListItem):
+    keywords: str = ""
 
 
 class ChartDetail(BaseModel):
@@ -52,12 +52,11 @@ class ChartDetail(BaseModel):
     jacket_url: Optional[str] = None
     song: SongDetail
     images: List[ChartImageOut]
-    tags: List[TagOut]  # chart-level tags
+    tags: List[TagOut]
 
 
 class FilterMeta(BaseModel):
-    """Used by the frontend to populate filter chips."""
     difficulties: List[str]
     tags: List[str]
-    level_min: int
-    level_max: int
+    level_min: float
+    level_max: float
