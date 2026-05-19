@@ -17,12 +17,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        {/* Public */}
         <Route path="/"           element={<SongList />} />
         <Route path="/songs/:id"  element={<SongDetail />} />
         <Route path="/charts/:id" element={<ChartDetail />} />
 
-        {/* Admin */}
         <Route path="/admin" element={<AdminLayout />}>
           <Route index            element={<AdminSongList />} />
           <Route path="songs/new" element={<AdminSongEdit />} />

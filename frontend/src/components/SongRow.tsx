@@ -6,19 +6,9 @@ const ALL_DIFFS: Difficulty[] =
 
 interface Props {
   song: Song;
-  /**
-   * The chart the title-click should jump to. The list view computes this as
-   * "the highest-level chart still in the filter set" so clicking the title
-   * lands on the most relevant pattern for the current view.
-   */
   titleTargetChartId: number;
 }
 
-/**
- * One row in the discover list. Two click targets per row:
- *   • title           → /charts/{titleTargetChartId}
- *   • difficulty cell → /charts/{thatChartId}
- */
 export default function SongRow({ song, titleTargetChartId }: Props) {
   const nav = useNavigate();
   const byDiff = new Map(song.charts.map((c) => [c.difficulty, c]));

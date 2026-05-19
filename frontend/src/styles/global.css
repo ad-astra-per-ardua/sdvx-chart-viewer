@@ -111,6 +111,14 @@ button { font: inherit; cursor: pointer; }
 .sidebar .section-label {
   font-size: 11px; color: #94a3b8; margin: 16px 0 8px; letter-spacing: .12em;
 }
+.sidebar .section-label:first-of-type { margin-top: 0; }
+.sidebar-search {
+  width: 100%; box-sizing: border-box;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #e6e8ee; border-radius: 8px;
+  padding: 8px 12px; font-size: 13px;
+}
 
 .level-range {
   display: flex; align-items: center; gap: 8px;
@@ -244,25 +252,26 @@ button { font: inherit; cursor: pointer; }
 .detail-top .badge .lv  { font-size: 22px; font-weight: 700; margin-top: 2px; }
 .detail-top .badge.active { box-shadow: 0 0 0 2px currentColor inset; }
 
-/* Part selector — viewer & admin */
 .part-selector {
   display: flex;
   gap: 6px;
   margin-bottom: 10px;
 }
 .part-btn {
-  padding: 3px 14px;
+  padding: 0 14px;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.04);
   color: #94a3b8;
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.1;
   cursor: pointer;
   transition: background .15s, border-color .15s, color .15s;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
+  height: 50px;
 }
 .part-btn:hover:not(:disabled) {
   background: rgba(255,255,255,0.09);
@@ -490,10 +499,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .form-grid label.full { grid-column: 1 / -1; }
 .form-grid input, .form-grid select, .form-grid textarea {
   padding: 8px 10px; border-radius: 8px;
-  background: rgba(255,255,255,0.04);
+  background-color: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1);
   color: #e6e8ee;
 }
+.form-grid select { padding-right: 28px; }
 .form-actions { margin-top: 18px; display: flex; gap: 8px; justify-content: flex-end; }
 
 .upload-row { display: flex; gap: 8px; align-items: center; }
@@ -513,15 +523,40 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 .chip.tag.deletable button:hover { background: rgba(255,255,255,0.15); }
 
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;
+  background-color: rgba(255,255,255,0.04);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23e2e8f0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: #e6e8ee;
+  padding: 7px 28px 7px 10px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+select:focus {
+  outline: none;
+  border-color: rgba(167,139,250,0.55);
+  box-shadow: 0 0 0 2px rgba(167,139,250,0.12);
+}
+select option {
+  background-color: #1a2035;
+  color: #e6e8ee;
+}
+
 .inline-form { display: flex; gap: 8px; align-items: center; }
 .inline-form input, .inline-form select {
-  padding: 8px 10px; border-radius: 8px;
-  background: rgba(255,255,255,0.04);
+  padding: 5px 28px 5px 8px; border-radius: 6px;
+  background-color: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1); color: #e6e8ee;
+  font-size: 13px;
 }
 .inline-form input[type=number] { width: 90px; }
 
-/* Chart cards */
 .chart-card-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   gap: 16px; margin-top: 16px;
@@ -534,7 +569,6 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   display: flex; flex-direction: column; gap: 12px;
 }
 
-/* 자켓 + 헤더/태그 2열 레이아웃 */
 .chart-card-top {
   display: flex; gap: 14px; align-items: flex-start;
 }
@@ -569,9 +603,13 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1); color: #e6e8ee;
 }
+.chart-card-head select {
+  padding: 5px 28px 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
 .chart-card-head .danger { margin-left: auto; }
 
-/* 자켓 플레이스홀더 (목록/상세 뷰) */
 .jacket-empty {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.06);
@@ -603,9 +641,7 @@ button.ghost.full { width: 100%; }
   border-radius: 10px;
 }
 
-/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 760px) {
-  /* 사이드바 → 상단으로 적층 */
   .app-shell {
     grid-template-columns: 1fr;
     padding: 12px;
@@ -615,7 +651,6 @@ button.ghost.full { width: 100%; }
   .discover-header { padding: 12px 16px; }
   .discover-header .left .count { font-size: 26px; }
 
-  /* 곡 목록 행 */
   .song-row { padding: 8px 10px; gap: 10px; }
   .song-row .jacket { width: 48px; height: 48px; }
   .song-row .meta .title { font-size: 13px; }
@@ -625,7 +660,6 @@ button.ghost.full { width: 100%; }
   .chart-pill .lbl { font-size: 9px; }
   .chart-pill .lv  { font-size: 12px; }
 
-  /* 상세 페이지 — 2열 유지, 자켓 축소 */
   .detail-shell { padding: 14px; }
   .detail-top { grid-template-columns: 120px 1fr; gap: 14px; }
   .detail-top .jacket { width: 120px; height: 120px; border-radius: 10px; }
@@ -635,7 +669,6 @@ button.ghost.full { width: 100%; }
   .detail-top .badge .lbl { font-size: 9px; }
   .detail-top .badge .lv  { font-size: 16px; }
 
-  /* 어드민 */
   .admin-shell { padding: 12px; }
   .admin-toolbar { flex-wrap: wrap; }
   .admin-toolbar .search-input { min-width: 0; flex: 1; }
@@ -647,7 +680,6 @@ button.ghost.full { width: 100%; }
 @media (max-width: 480px) {
   .app-shell { padding: 8px; gap: 8px; }
 
-  /* 매우 좁은 화면: 곡 행의 난이도 pill을 다음 줄로 내림 */
   .song-row {
     grid-template-columns: 40px 1fr;
     grid-template-rows: auto auto;
@@ -661,7 +693,6 @@ button.ghost.full { width: 100%; }
   }
   .chart-pill { min-width: 32px; }
 
-  /* 상세 페이지: 자켓 더 축소 */
   .detail-top { grid-template-columns: 90px 1fr; gap: 10px; }
   .detail-top .jacket { width: 90px; height: 90px; border-radius: 8px; }
   .detail-top h1 { font-size: 16px; }

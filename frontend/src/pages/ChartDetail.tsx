@@ -10,12 +10,6 @@ const PARTS: { key: ChartPart; label: string }[] = [
   { key: "alt",   label: "대체파트" },
 ];
 
-/**
- * Pattern (chart) detail page.
- *  Top:    jacket + title + all difficulty badges (current one highlighted)
- *  Body:   horizontally-scrollable strip of pattern images
- *  Footer: saved tags
- */
 export default function ChartDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -65,7 +59,6 @@ export default function ChartDetail() {
         </div>
       </div>
 
-      {/* Body: part selector + horizontally scrollable pattern images */}
       <div className="part-selector">
         {PARTS.map(({ key, label }) => {
           const hasImages = images.some((img) => img.part === key);
@@ -89,7 +82,6 @@ export default function ChartDetail() {
             ))}
       </div>
 
-      {/* Footer: saved tags */}
       <div className="tag-strip">
         {tags.length === 0
           ? <span style={{ color: "#64748b", fontSize: 12 }}>등록된 태그 없음</span>

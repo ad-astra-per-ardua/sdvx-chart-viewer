@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { adminCreateTag, adminDeleteTag, adminListTags } from "../../api/admin";
 import type { Tag } from "../../types";
 
-/** Tag management — list/create/delete. */
 export default function AdminTags() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [name, setName] = useState("");

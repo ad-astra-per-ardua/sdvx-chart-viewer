@@ -2,17 +2,11 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { adminAuth, adminLogin } from "../../api/admin";
 
-/**
- * Shell for every /admin/* route.
- *  - Gates everything behind the admin token (shown as a login screen if missing).
- *  - Provides the top nav (곡 / 태그 / 로그아웃) and a back-to-site link.
- */
 export default function AdminLayout() {
   const [authed, setAuthed] = useState(!!adminAuth.token);
   const loc = useLocation();
   const nav = useNavigate();
 
-  // Re-check on route change in case a 401 wiped the token.
   useEffect(() => { setAuthed(!!adminAuth.token); }, [loc.pathname]);
 
   if (!authed) return <AdminLogin onAuthed={() => setAuthed(true)} />;

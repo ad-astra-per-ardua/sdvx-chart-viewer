@@ -3,9 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   adminCreateChart, adminCreateChartImage, adminCreateSong,
   adminCreateTag, adminDeleteChart, adminDeleteChartImage,
-  adminDeleteSong, adminListTags, adminUpdateChart, adminUpdateSong, adminUpload,
+  adminDeleteSong, adminGetSong, adminListTags, adminUpdateChart, adminUpdateSong, adminUpload,
 } from "../../api/admin";
-import type { Chart, ChartImage, ChartPart, Difficulty, Song, Tag } from "../../types";
+import type { Chart, ChartImage, ChartPart, Difficulty, SongAdmin, Tag } from "../../types";
 
 const PARTS: { key: ChartPart; label: string }[] = [
   { key: "intro", label: "인트로" },
@@ -17,18 +17,17 @@ const PARTS: { key: ChartPart; label: string }[] = [
 const ALL_DIFFS: Difficulty[] =
   ["NOV","ADV","EXH","MXM","INF","GRV","HVN","VVD","XCD","ULT","NBL"];
 
-// 1–16: 정수 / 17·17.5 / 18.0–20.0: 0.1 단위
 const LEVEL_OPTIONS: number[] = [
   ...Array.from({ length: 16 }, (_, i) => i + 1),
   17, 17.5,
-  ...Array.from({ length: 21 }, (_, i) => Math.round((18 + i * 0.1) * 10) / 10),
+  ...Array.from({ length: 30 }, (_, i) => Math.round((18 + i * 0.1) * 10) / 10),
 ];
 
 function LevelSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <select value={value} onChange={(e) => onChange(parseFloat(e.target.value))}>
       {LEVEL_OPTIONS.map((lv) => (
-        <option key={lv} value={lv}>{lv}</option>
+        <option key={lv} value={lv}>{lv >= 18 ? lv.toFixed(1) : lv}</option>
       ))}
     </select>
   );
@@ -41,22 +40,22 @@ export default function AdminSongEdit() {
   const isNew = !id;
   const nav = useNavigate();
 
-  const [song, setSong]       = useState<Song | null>(null);
+  const [song, setSong]       = useState<SongAdmin | null>(null);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [title, setTitle]     = useState("");
   const [artist, setArtist]   = useState("");
+  const [keywords, setKeywords] = useState("");
   const [saving, setSaving]   = useState(false);
   const [chartEdits, setChartEdits] = useState<Record<number, ChartEdit>>({});
 
   const reloadSong = async (sid: number) => {
-    const r = await fetch(`/api/songs/${sid}`, { cache: "no-store" });
-    if (!r.ok) throw new Error(`song ${r.status}`);
-    const s: Song = await r.json();
+    const s = await adminGetSong(sid);
     setSong(s);
-    setTitle(s.title); setArtist(s.artist);
+    setTitle(s.title);
+    setArtist(s.artist);
+    setKeywords(s.keywords ?? "");
   };
 
-  // chart 편집 상태를 song이 바뀔 때마다 서버 값으로 초기화
   useEffect(() => {
     if (!song) return;
     const edits: Record<number, ChartEdit> = {};
@@ -74,20 +73,18 @@ export default function AdminSongEdit() {
   const setChartEdit = (chartId: number, edit: Partial<ChartEdit>) =>
     setChartEdits((cur) => ({ ...cur, [chartId]: { ...cur[chartId], ...edit } }));
 
-  // 새 곡 생성
   const onCreateSong = async () => {
     if (!title.trim() || !artist.trim()) {
       alert("제목과 아티스트는 필수입니다."); return;
     }
     setSaving(true);
     try {
-      const s = await adminCreateSong({ title, artist });
+      const s = await adminCreateSong({ title, artist, keywords });
       nav(`/admin/songs/${s.id}`, { replace: true });
     } catch (e: any) { alert("저장 실패: " + e.message); }
     finally { setSaving(false); }
   };
 
-  // 기본 정보 + 모든 패턴 한 번에 저장
   const onSaveAll = async () => {
     if (!title.trim() || !artist.trim()) {
       alert("제목과 아티스트는 필수입니다."); return;
@@ -95,7 +92,7 @@ export default function AdminSongEdit() {
     if (!song) return;
     setSaving(true);
     try {
-      await adminUpdateSong(song.id, { title, artist });
+      await adminUpdateSong(song.id, { title, artist, keywords });
       for (const c of song.charts) {
         const edit = chartEdits[c.id];
         if (edit) await adminUpdateChart(c.id, {
@@ -136,6 +133,14 @@ export default function AdminSongEdit() {
           <label>아티스트
             <input value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="아티스트" />
           </label>
+          <label className="full">검색 키워드 <span className="muted">(일반 유저에게 비공개)</span>
+            <textarea
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder="예: 뇌절 원핸드 SDVX5 阿波踊り (공백·쉼표 구분)"
+              rows={2}
+            />
+          </label>
         </div>
 
         {isNew && (
@@ -172,9 +177,8 @@ export default function AdminSongEdit() {
 }
 
 
-// ── Charts panel ──────────────────────────────────────────────────────────
 function ChartManager({ song, allTags, chartEdits, onEditChange, onCreateTag, onReload }: {
-  song: Song;
+  song: SongAdmin;
   allTags: Tag[];
   chartEdits: Record<number, ChartEdit>;
   onEditChange: (chartId: number, edit: Partial<ChartEdit>) => void;
@@ -244,7 +248,6 @@ function ChartManager({ song, allTags, chartEdits, onEditChange, onCreateTag, on
 }
 
 
-// ── Single chart card ─────────────────────────────────────────────────────
 function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsChange, onJacketChange,
                      allTags, onCreateTag, onDelete }: {
   chart: Chart;
@@ -265,10 +268,8 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
   const [activePart, setActivePart]   = useState<ChartPart>("main");
   const fileRef       = useRef<HTMLInputElement>(null);
   const jacketFileRef = useRef<HTMLInputElement>(null);
-  // 삭제 중인 이미지 ID — 중복 클릭 방지
   const deletingIds = useRef<Set<number>>(new Set());
 
-  // 캐시를 완전히 우회해서 항상 서버 최신 데이터를 가져옴
   const reloadImages = async () => {
     setLoading(true);
     try {
@@ -294,7 +295,6 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
         const up = await adminUpload(f);
         await adminCreateChartImage({ chart_id: chart.id, image_url: up.url, order_idx: idx++, part: activePart });
       }
-      // 파일 input 초기화 — 동일 파일 재업로드 가능
       if (fileRef.current) fileRef.current.value = "";
       await reloadImages();
     } catch (e: any) {
@@ -306,13 +306,11 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
   const onDeleteImage = async (img: ChartImage) => {
     if (deletingIds.current.has(img.id)) return;
     if (!confirm("이 패턴 이미지를 삭제할까요?")) return;
-    // 즉시 UI에서 제거 (낙관적 업데이트) — 연속 클릭 방지
     deletingIds.current.add(img.id);
     setImages((prev) => prev.filter((i) => i.id !== img.id));
     try {
       await adminDeleteChartImage(img.id);
     } catch (e: any) {
-      // 실패 시 서버 상태로 복원
       await reloadImages();
       alert("삭제 실패: " + e.message);
     } finally {
@@ -334,7 +332,6 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
 
   return (
     <div className="chart-card">
-      {/* 자켓 + 헤더 */}
       <div className="chart-card-top">
         <div className="chart-jacket-box">
           {jacketUrl
@@ -407,8 +404,7 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
 }
 
 
-// ── Danger zone ─────────────────────────────────────────────────────────
-function DangerZone({ song }: { song: Song }) {
+function DangerZone({ song }: { song: SongAdmin }) {
   const nav = useNavigate();
   return (
     <section className="card danger-zone">
