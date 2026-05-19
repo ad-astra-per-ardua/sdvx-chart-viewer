@@ -66,7 +66,7 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
 
       <div className="section-label">레벨</div>
       <div className="level-range">
-        <input type="number" min={1} max={20} value={query.level_min}
+        <input type="number" min={1} max={20.9} value={query.level_min}
                onChange={(e) => onLevelMin(parseInt(e.target.value || "1", 10))} />
         <span>~</span>
         <input type="number" min={1} max={20.9} step={0.1} value={query.level_max}
