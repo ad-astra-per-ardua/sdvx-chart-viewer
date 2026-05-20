@@ -13,7 +13,6 @@ chart_tag = Table(
     Column("chart_id", Integer, ForeignKey("charts.id", ondelete="CASCADE"), primary_key=True),
     Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
 )
-Index("idx_chart_tag_tag_id", chart_tag.c.tag_id)
 
 
 class Tag(Base):
@@ -26,8 +25,6 @@ class Song(Base):
     __tablename__ = "songs"
     __table_args__ = (
         Index("idx_songs_created_at", "created_at"),
-        Index("idx_songs_title", "title"),
-        Index("idx_songs_artist", "artist"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -47,8 +44,6 @@ class Chart(Base):
     __table_args__ = (
         UniqueConstraint("song_id", "difficulty", name="uq_song_diff"),
         Index("idx_charts_song_id", "song_id"),
-        Index("idx_charts_level", "level"),
-        Index("idx_charts_diff_level", "difficulty", "level"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -69,7 +64,6 @@ class ChartImage(Base):
     __tablename__ = "chart_images"
     __table_args__ = (
         Index("idx_chart_images_chart_id", "chart_id"),
-        Index("idx_chart_images_chart_part", "chart_id", "part"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)

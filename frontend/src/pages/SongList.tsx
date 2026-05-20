@@ -1,9 +1,13 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  startTransition, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState,
+} from "react";
 import { Link } from "react-router-dom";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import FilterSidebar from "../components/FilterSidebar";
 import LevelQuickBar from "../components/LevelQuickBar";
 import SongRow from "../components/SongRow";
 import { fetchMeta, fetchSongs } from "../api/client";
+import { buildSearchIndex, normalize } from "../utils/search";
 import type { FilterMeta, Song, SongQuery } from "../types";
 
 const DEFAULT_QUERY: SongQuery = {
@@ -16,10 +20,15 @@ const DEFAULT_QUERY: SongQuery = {
   q: "",
 };
 
+// Estimate for variable-height rows. Tight estimates reduce scroll jitter,
+// but measureElement overrides this once a row mounts.
+const ROW_ESTIMATE = 94;
+const ROW_OVERSCAN = 8;
+
 function applyFilter(all: Song[], query: SongQuery, searchIndex: string[]): Song[] {
   const { level_min, level_max, difficulties, tags, quick_level, sort, q } = query;
   const diffSet      = new Set(difficulties);
-  const lq           = q ? q.toLowerCase() : "";
+  const lq           = q ? normalize(q) : "";
   const hasDiff      = diffSet.size > 0;
   const hasTag       = tags.length > 0;
   const hasText      = lq.length > 0;
@@ -77,7 +86,7 @@ export default function SongList() {
   }, []);
 
   const searchIndex = useMemo(
-    () => allSongs.map(s => `${s.title} ${s.artist} ${s.keywords ?? ""}`.toLowerCase()),
+    () => buildSearchIndex(allSongs, (s) => `${s.title} ${s.artist} ${s.keywords ?? ""}`),
     [allSongs],
   );
 
@@ -99,6 +108,24 @@ export default function SongList() {
     }
     return map;
   }, [songs]);
+
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [listOffset, setListOffset] = useState(0);
+  useLayoutEffect(() => {
+    const update = () => setListOffset(listRef.current?.offsetTop ?? 0);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  const virtualizer = useWindowVirtualizer({
+    count: songs.length,
+    estimateSize: () => ROW_ESTIMATE,
+    overscan: ROW_OVERSCAN,
+    scrollMargin: listOffset,
+    getItemKey: (i) => songs[i].id,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div className="app-shell">
@@ -133,18 +160,45 @@ export default function SongList() {
 
       <FilterSidebar meta={meta} query={query} setQuery={setQuery} />
 
-      <div className="song-list" style={isPending ? { opacity: 0.6, transition: "opacity 0.15s" } : undefined}>
-        {loading
-          ? <div className="empty">불러오는 중…</div>
-          : songs.length === 0
-            ? <div className="empty">조건에 맞는 곡이 없어요. 필터를 풀어보세요.</div>
-            : songs.map((s) => (
+      <div
+        ref={listRef}
+        className="song-list"
+        style={{
+          position: "relative",
+          height: songs.length === 0 ? undefined : `${virtualizer.getTotalSize()}px`,
+          opacity: isPending ? 0.6 : undefined,
+          transition: "opacity 0.15s",
+        }}
+      >
+        {loading ? (
+          <div className="empty">불러오는 중…</div>
+        ) : songs.length === 0 ? (
+          <div className="empty">조건에 맞는 곡이 없어요. 필터를 풀어보세요.</div>
+        ) : (
+          virtualItems.map((vi) => {
+            const s = songs[vi.index];
+            return (
+              <div
+                key={vi.key}
+                data-index={vi.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  paddingBottom: 10,
+                  transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,
+                }}
+              >
                 <SongRow
-                  key={s.id}
                   song={s}
                   titleTargetChartId={titleTargets.get(s.id) ?? s.charts[0]?.id}
                 />
-              ))}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
