@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchChart } from "../api/client";
 import type { ChartDetailDto, ChartPart } from "../types";
@@ -10,11 +10,57 @@ const PARTS: { key: ChartPart; label: string }[] = [
   { key: "alt",   label: "대체파트" },
 ];
 
+const ZOOM_FACTOR = 2.5;
+
+function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const [zoomed, setZoomed] = useState(false);
+  const [origin, setOrigin] = useState("50% 50%");
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (zoomed) setZoomed(false);
+        else onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomed, onClose]);
+
+  const handleImgClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    e.stopPropagation();
+    if (zoomed) {
+      setZoomed(false);
+      return;
+    }
+    const rect = imgRef.current!.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(2);
+    const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(2);
+    setOrigin(`${x}% ${y}%`);
+    setZoomed(true);
+  };
+
+  return (
+    <div className="lightbox-overlay" onClick={onClose}>
+      <img
+        ref={imgRef}
+        className={`lightbox-img${zoomed ? " lb-zoomed" : ""}`}
+        style={{ transformOrigin: origin }}
+        src={src}
+        alt=""
+        onClick={handleImgClick}
+      />
+    </div>
+  );
+}
+
 export default function ChartDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const [data, setData] = useState<ChartDetailDto | null>(null);
   const [activePart, setActivePart] = useState<ChartPart>("main");
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -29,6 +75,8 @@ export default function ChartDetail() {
 
   return (
     <div className="detail-shell">
+      {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+
       <button onClick={()=>{location.href="/"}} className="ghost">← 목록으로</button>
 
       <div className="detail-top">
@@ -62,6 +110,7 @@ export default function ChartDetail() {
       <div className="part-selector">
         {PARTS.map(({ key, label }) => {
           const hasImages = images.some((img) => img.part === key);
+          const count = images.filter((img) => img.part === key).length;
           return (
             <button
               key={key}
@@ -70,15 +119,25 @@ export default function ChartDetail() {
               disabled={!hasImages}
             >
               {label}
+              {hasImages && <span className="part-count">{count}</span>}
             </button>
           );
         })}
       </div>
+
       <div className="image-strip">
         {partImages.length === 0
           ? <div className="empty">이 파트에 등록된 이미지가 없습니다.</div>
           : partImages.map((img) => (
-              <img key={img.id} src={img.image_url} alt={`pattern ${img.order_idx + 1}`} loading="lazy" decoding="async" />
+              <img
+                key={img.id}
+                className="strip-img"
+                src={img.image_url}
+                alt={`pattern ${img.order_idx + 1}`}
+                loading="lazy"
+                decoding="async"
+                onClick={() => setLightboxSrc(img.image_url)}
+              />
             ))}
       </div>
 

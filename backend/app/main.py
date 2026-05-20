@@ -1,7 +1,8 @@
+import hashlib
 from pathlib import Path
 from typing import Optional
 import orjson
-from fastapi import FastAPI, Depends, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +18,13 @@ Base.metadata.create_all(bind=engine)
 for _stmt in [
     "ALTER TABLE songs ADD COLUMN keywords TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE songs DROP COLUMN jacket_url",
+    # Drop indexes no query can use (leading-wildcard LIKE, client-side filtering).
+    "DROP INDEX IF EXISTS idx_songs_title",
+    "DROP INDEX IF EXISTS idx_songs_artist",
+    "DROP INDEX IF EXISTS idx_charts_level",
+    "DROP INDEX IF EXISTS idx_charts_diff_level",
+    "DROP INDEX IF EXISTS idx_chart_tag_tag_id",
+    "DROP INDEX IF EXISTS idx_chart_images_chart_part",
 ]:
     try:
         with engine.connect() as _conn:
