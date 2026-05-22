@@ -1,8 +1,11 @@
-import hashlib
+import logging
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from pathlib import Path
 from typing import Optional
 import orjson
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +13,7 @@ from sqlalchemy import select, text as sql_text
 from sqlalchemy.orm import Session, selectinload
 
 from .database import engine, Base, get_db
+from .limiter import limiter
 from . import models, schemas
 from .admin import router as admin_router, UPLOAD_DIR
 
@@ -18,7 +22,6 @@ Base.metadata.create_all(bind=engine)
 for _stmt in [
     "ALTER TABLE songs ADD COLUMN keywords TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE songs DROP COLUMN jacket_url",
-    # Drop indexes no query can use (leading-wildcard LIKE, client-side filtering).
     "DROP INDEX IF EXISTS idx_songs_title",
     "DROP INDEX IF EXISTS idx_songs_artist",
     "DROP INDEX IF EXISTS idx_charts_level",
@@ -33,8 +36,15 @@ for _stmt in [
     except Exception:
         pass
 
+logger = logging.getLogger("sdvx.security")
 app = FastAPI(title="SDVX Megamix Chart Viewer API")
+app.state.limiter = limiter
 
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown")
+    logger.warning("RATE_LIMIT  ip=%s  %s %s", ip, request.method, request.url.path)
+    return _rate_limit_exceeded_handler(request, exc)
 app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=5)
 
 app.add_middleware(
@@ -61,7 +71,8 @@ def _song_detail(s: models.Song, charts: list) -> schemas.SongDetail:
 
 
 @app.get("/api/meta", response_model=schemas.FilterMeta)
-def get_meta(response: Response, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def get_meta(request: Request, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=60"
     diffs = ["NOV", "ADV", "EXH", "MXM", "INF", "GRV", "HVN", "VVD", "XCD", "ULT", "NBL"]
     tags = [r[0] for r in db.execute(select(models.Tag.name).order_by(models.Tag.name)).all()]
@@ -69,7 +80,9 @@ def get_meta(response: Response, db: Session = Depends(get_db)):
 
 
 @app.get("/api/songs")
+@limiter.limit("60/minute")
 def list_songs(
+        request: Request,
         response: Response,
         db: Session = Depends(get_db),
         sort: str = Query("new", regex="^(new|level_asc|level_desc)$"),
@@ -77,16 +90,12 @@ def list_songs(
         limit: Optional[int] = Query(None, ge=1, le=500),
 ):
     response.headers["Cache-Control"] = "public, max-age=15"
-
-    # The frontend loads the full set once and filters client-side; only
-    # text search (used by the Megamix picker) is still done server-side.
     conds = ["c.level >= 1"]
     params: dict = {}
     if q:
         conds.append("(s.title LIKE :q OR s.artist LIKE :q OR s.keywords LIKE :q)")
         params["q"] = f"%{q}%"
 
-    # "new" order is resolved in SQL so no Python sort is needed for it.
     sql = sql_text(
         "SELECT s.id, s.title, s.artist, s.keywords, s.created_at,"
         "       c.id AS chart_id, c.difficulty, c.level, c.jacket_url AS chart_jacket"
@@ -96,7 +105,6 @@ def list_songs(
         " ORDER BY s.created_at DESC, s.id, c.id"
     )
 
-    # Fetch all chart tags in one indexed query (empty table = instant)
     tag_rows = db.execute(sql_text(
         "SELECT ct.chart_id, t.id, t.name FROM chart_tag ct JOIN tags t ON t.id = ct.tag_id"
     )).fetchall()
@@ -158,7 +166,8 @@ def list_songs(
 
 
 @app.get("/api/songs/{song_id}", response_model=schemas.SongDetail)
-def get_song(song_id: int, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def get_song(request: Request, song_id: int, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=30"
     s = (
         db.query(models.Song)
@@ -172,7 +181,8 @@ def get_song(song_id: int, response: Response, db: Session = Depends(get_db)):
 
 
 @app.get("/api/charts/{chart_id}", response_model=schemas.ChartDetail)
-def get_chart(chart_id: int, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def get_chart(request: Request, chart_id: int, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=30"
     c = (
         db.query(models.Chart)

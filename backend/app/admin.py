@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 
 import orjson
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session, selectinload
 
@@ -16,6 +16,7 @@ from .admin_schemas import (
     SongCreate, SongUpdate, TagCreate, UploadResponse,
 )
 from .database import get_db
+from .limiter import limiter
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -27,7 +28,10 @@ MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
 def _admin_token() -> str:
-    return os.getenv("ADMIN_TOKEN", "change-me-in-production")
+    token = os.getenv("ADMIN_TOKEN", "")
+    if not token:
+        raise RuntimeError("Admin Token Verify failed.")
+    return token
 
 
 def require_admin(x_admin_token: str = Header(default="")) -> None:
@@ -37,7 +41,8 @@ def require_admin(x_admin_token: str = Header(default="")) -> None:
 
 
 @router.post("/login")
-def login(payload: dict):
+@limiter.limit("5/minute")
+def login(request: Request, payload: dict):
     token = (payload or {}).get("token", "")
     if not secrets.compare_digest(token, _admin_token()):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid admin token")

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchChart } from "../api/client";
 import type { ChartDetailDto, ChartPart } from "../types";
@@ -9,8 +9,6 @@ const PARTS: { key: ChartPart; label: string }[] = [
   { key: "main",  label: "메인파트" },
   { key: "alt",   label: "대체파트" },
 ];
-
-const ZOOM_FACTOR = 2.5;
 
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
   const [zoomed, setZoomed] = useState(false);
