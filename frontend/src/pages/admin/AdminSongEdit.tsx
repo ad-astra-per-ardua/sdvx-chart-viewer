@@ -137,7 +137,7 @@ export default function AdminSongEdit() {
             <textarea
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
-              placeholder="예: 뇌절 원핸드 SDVX5 阿波踊り (공백·쉼표 구분)"
+              placeholder="예: 뇌절 원핸드 SDVX (공백·쉼표 구분)"
               rows={2}
             />
           </label>

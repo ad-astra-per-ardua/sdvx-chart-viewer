@@ -13,8 +13,7 @@ build/
 
 # ── Environment / Secrets ────────────────────────────────────────────────────
 .env
-.env.*
-!.env.example
+backend/.env
 
 # ── Database & User Uploads ──────────────────────────────────────────────────
 *.db
@@ -23,6 +22,7 @@ build/
 *.sqlite
 *.sqlite3
 backend/data/
+backend/uploads/
 
 # ── Node / Frontend ──────────────────────────────────────────────────────────
 node_modules/
@@ -42,4 +42,4 @@ Thumbs.db
 *.swo
 !/.claude/
 /.claude/settings.local.json
-.env.example
+*.md
