@@ -6,7 +6,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from .database import Base
 
-FALLBACK_JACKET_URL = "/uploads/PTnXJN2w2xo_600px-Generic_Jacket_EG.png"
+FALLBACK_JACKET_URL = "/no-jacket.png"
 
 chart_tag = Table(
     "chart_tag", Base.metadata,

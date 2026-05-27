@@ -18,10 +18,13 @@ export default memo(function SongRow({ song, titleTargetChartId }: Props) {
 
   return (
     <div className="song-row">
-      {jacketUrl
-        ? <img className="jacket" src={jacketUrl} alt="" loading="lazy" />
-        : <div className="jacket jacket-empty" />
-      }
+      <img
+        className="jacket"
+        src={jacketUrl || "/no-jacket.png"}
+        alt=""
+        loading="lazy"
+        onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/no-jacket.png"; }}
+      />
 
       <div className="meta">
         <div className="title" onClick={() => nav(`/charts/${titleTargetChartId}`)}>
