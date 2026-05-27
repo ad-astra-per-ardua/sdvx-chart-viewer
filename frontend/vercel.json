@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/:path*",     "destination": "https://sdvx-chart-viewer-production.up.railway.app/api/:path*" },
+    { "source": "/uploads/:path*", "destination": "https://sdvx-chart-viewer-production.up.railway.app/uploads/:path*" }
+  ]
+}
