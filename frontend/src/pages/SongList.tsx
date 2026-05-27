@@ -20,8 +20,6 @@ const DEFAULT_QUERY: SongQuery = {
   q: "",
 };
 
-// Estimate for variable-height rows. Tight estimates reduce scroll jitter,
-// but measureElement overrides this once a row mounts.
 const ROW_ESTIMATE = 94;
 const ROW_OVERSCAN = 8;
 
@@ -140,11 +138,11 @@ export default function SongList() {
           <button
             className={query.sort === "level_desc" ? "active" : ""}
             onClick={() => setQuery({ ...query, sort: "level_desc" })}
-          >Lv↓</button>
+          >Lv ↓</button>
           <button
             className={query.sort === "level_asc" ? "active" : ""}
             onClick={() => setQuery({ ...query, sort: "level_asc" })}
-          >Lv↑</button>
+          >Lv ↑</button>
           <button
             className={query.sort === "new" ? "active" : ""}
             onClick={() => setQuery({ ...query, sort: "new" })}

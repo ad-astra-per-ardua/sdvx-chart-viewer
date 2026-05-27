@@ -1,4 +1,5 @@
 import logging
+import os
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from pathlib import Path
@@ -19,6 +20,8 @@ from .admin import router as admin_router, UPLOAD_DIR
 
 Base.metadata.create_all(bind=engine)
 
+logger = logging.getLogger("sdvx.security")
+
 for _stmt in [
     "ALTER TABLE songs ADD COLUMN keywords TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE songs DROP COLUMN jacket_url",
@@ -33,27 +36,47 @@ for _stmt in [
         with engine.connect() as _conn:
             _conn.execute(sql_text(_stmt))
             _conn.commit()
-    except Exception:
-        pass
+    except Exception as _e:
+        _msg = str(_e).lower()
+        if "already exists" not in _msg and "duplicate" not in _msg and "no such column" not in _msg:
+            logger.warning("Migration warning: %s", _e)
 
-logger = logging.getLogger("sdvx.security")
 app = FastAPI(title="SDVX Megamix Chart Viewer API")
 app.state.limiter = limiter
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown")
+    ip = request.client.host if request.client else "unknown"
     logger.warning("RATE_LIMIT  ip=%s  %s %s", ip, request.method, request.url.path)
     return _rate_limit_exceeded_handler(request, exc)
 app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=5)
 
+_ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
+    "ALLOWED_ORIGINS", "https://megamix-info.vercel.app,http://localhost:5173"
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type"],
     expose_headers=["X-Total-Count"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if not request.url.path.startswith("/uploads"):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' data: https:; "
+            "script-src 'self'; style-src 'self' 'unsafe-inline'"
+        )
+    return response
 
 Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")

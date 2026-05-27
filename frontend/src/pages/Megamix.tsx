@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fetchSongs } from "../api/client";
 import type { Difficulty, Song } from "../types";
@@ -83,9 +83,7 @@ export default function Megamix() {
   const isPicking = (side: Side, idx: number) =>
     picker?.side === side && picker?.idx === idx;
 
-  // ── Drag & drop ────────────────────────────────────────────────────────────
   const onDragStart = (e: React.DragEvent, side: Side, idx: number) => {
-    // don't start drag when interacting with the picker
     if (isPicking(side, idx)) { e.preventDefault(); return; }
     setDragFrom({ side, idx });
     e.dataTransfer.effectAllowed = "move";
@@ -116,7 +114,6 @@ export default function Megamix() {
   };
 
   const onDragEnd = () => { setDragFrom(null); setDragOverIdx(null); };
-  // ───────────────────────────────────────────────────────────────────────────
 
   const renderSlot = (side: Side, idx: number, song: Song | null) => {
     const open      = isPicking(side, idx);

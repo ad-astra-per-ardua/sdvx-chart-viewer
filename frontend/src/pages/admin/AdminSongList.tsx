@@ -68,14 +68,6 @@ export default function AdminSongList() {
   const [q,        setQ]        = useState("");
   const [loading,  setLoading]  = useState(true);
   const nav = useNavigate();
-
-  // Decoupled state model:
-  //   - `input` updates synchronously so the controlled textbox stays responsive.
-  //   - `q` is committed inside startTransition, marking the heavy filter +
-  //     virtualizer recount as a low-priority render that React can interrupt.
-  //   - useDeferredValue then keeps the prior `q` live for one frame while the
-  //     committed update is reconciled, so the textbox never paints behind
-  //     keystrokes even when the dataset is large.
   const deferredQ = useDeferredValue(q);
   const isPending = input !== deferredQ;
 
