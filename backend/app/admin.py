@@ -2,10 +2,10 @@ import logging
 import os
 import re
 import secrets
-import shutil
 from pathlib import Path
 from typing import List
 
+import httpx
 import orjson
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import text as sql_text
@@ -26,6 +26,32 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+
+_SUPABASE_URL = "https://rajqellsaolsgjtfhdnm.supabase.co"
+_SUPABASE_BUCKET = "uploads"
+
+
+def _storage_headers() -> dict:
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not key:
+        raise HTTPException(500, "SUPABASE_SERVICE_ROLE_KEY not configured")
+    return {"Authorization": f"Bearer {key}"}
+
+
+def _storage_delete(image_url: str) -> None:
+    if f"/storage/v1/object/public/{_SUPABASE_BUCKET}/" not in image_url:
+        return
+    filename = image_url.split(f"/object/public/{_SUPABASE_BUCKET}/")[-1]
+    if not filename:
+        return
+    try:
+        httpx.delete(
+            f"{_SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{filename}",
+            headers=_storage_headers(),
+            timeout=10,
+        )
+    except Exception:
+        pass
 
 
 COOKIE_NAME = "admin_session"
@@ -100,26 +126,25 @@ def upload(request: Request, file: UploadFile = File(...)):
     if ext not in ALLOWED_EXT:
         raise HTTPException(400, f"unsupported extension {ext!r}")
 
+    data = file.file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "file too large (max 8MB)")
+
     safe = _SAFE_NAME.sub("_", Path(file.filename or "f").stem)[:60] or "file"
     final = f"{secrets.token_urlsafe(8)}_{safe}{ext}"
-    dest = UPLOAD_DIR / final
+    content_type = file.content_type or "application/octet-stream"
 
-    size = 0
-    with dest.open("wb") as f:
-        while True:
-            chunk = file.file.read(64 * 1024)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
-                f.close()
-                dest.unlink(missing_ok=True)
-                raise HTTPException(413, "file too large (max 8MB)")
-            f.write(chunk)
+    resp = httpx.post(
+        f"{_SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{final}",
+        content=data,
+        headers={**_storage_headers(), "Content-Type": content_type},
+        timeout=30,
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(500, f"storage upload failed: {resp.text[:200]}")
 
-    base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
-    url = f"{base}/uploads/{final}" if base else f"/uploads/{final}"
-    return UploadResponse(url=url, filename=final, size=size)
+    url = f"{_SUPABASE_URL}/storage/v1/object/public/{_SUPABASE_BUCKET}/{final}"
+    return UploadResponse(url=url, filename=final, size=len(data))
 
 
 def _build_admin_song_out(s: models.Song) -> schemas.SongAdminOut:
@@ -317,6 +342,7 @@ def admin_delete_chart_image(request: Request, image_id: int, db: Session = Depe
     img = db.query(models.ChartImage).filter(models.ChartImage.id == image_id).first()
     if not img:
         raise HTTPException(404, "image not found")
+    _storage_delete(img.image_url)
     db.delete(img)
     db.commit()
 
