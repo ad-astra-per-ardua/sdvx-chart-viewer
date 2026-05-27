@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from pathlib import Path
@@ -10,13 +11,16 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select, text as sql_text
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import text as sql_text
+from sqlalchemy.orm import Session
 
 from .database import engine, Base, get_db
 from .limiter import limiter
 from . import models, schemas
 from .admin import router as admin_router, UPLOAD_DIR
+
+_song_list_cache: dict = {}   # (sort, q, limit) -> (body_bytes, total_str, monotonic_ts)
+_SONG_CACHE_TTL = 300.0       # 5 minutes
 
 Base.metadata.create_all(bind=engine)
 
@@ -83,22 +87,13 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(admin_router)
 
 
-def _song_detail(s: models.Song, charts: list) -> schemas.SongDetail:
-    top = max(charts, key=lambda c: c.level, default=None)
-    jacket = (top.jacket_url if top else None) or models.FALLBACK_JACKET_URL
-    return schemas.SongDetail(
-        id=s.id, title=s.title, artist=s.artist,
-        jacket_url=jacket, created_at=s.created_at,
-        charts=[schemas.ChartOut.model_validate(c) for c in charts],
-    )
-
 
 @app.get("/api/meta", response_model=schemas.FilterMeta)
 @limiter.limit("60/minute")
 def get_meta(request: Request, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=60"
     diffs = ["NOV", "ADV", "EXH", "MXM", "INF", "GRV", "HVN", "VVD", "XCD", "ULT", "NBL"]
-    tags = [r[0] for r in db.execute(select(models.Tag.name).order_by(models.Tag.name)).all()]
+    tags = [r[0] for r in db.execute(sql_text("SELECT name FROM tags ORDER BY name")).fetchall()]
     return schemas.FilterMeta(difficulties=diffs, tags=tags, level_min=1, level_max=20.9)
 
 
@@ -112,7 +107,14 @@ def list_songs(
         q: Optional[str] = Query(None),
         limit: Optional[int] = Query(None, ge=1, le=500),
 ):
-    response.headers["Cache-Control"] = "public, max-age=15"
+    cache_key = (sort, q or "", limit or 0)
+    entry = _song_list_cache.get(cache_key)
+    if entry and time.monotonic() - entry[2] < _SONG_CACHE_TTL:
+        response.headers["Cache-Control"] = "public, max-age=300"
+        response.headers["X-Total-Count"] = entry[1]
+        return Response(content=entry[0], media_type="application/json")
+
+    response.headers["Cache-Control"] = "public, max-age=60"
     conds = ["c.level >= 1"]
     params: dict = {}
     if q:
@@ -184,47 +186,97 @@ def list_songs(
         top = max(s["charts"], key=lambda c: c["level"], default=None)
         s["jacket_url"] = (top["jacket_url"] if top else None) or fallback
 
+    body = orjson.dumps(songs_list)
+    _song_list_cache[cache_key] = (body, str(total), time.monotonic())
     response.headers["X-Total-Count"] = str(total)
-    return Response(content=orjson.dumps(songs_list), media_type="application/json")
+    return Response(content=body, media_type="application/json")
 
 
 @app.get("/api/songs/{song_id}", response_model=schemas.SongDetail)
 @limiter.limit("60/minute")
 def get_song(request: Request, song_id: int, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=30"
-    s = (
-        db.query(models.Song)
-        .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
-        .filter(models.Song.id == song_id)
-        .first()
-    )
-    if not s:
+    song_row = db.execute(sql_text(
+        "SELECT id, title, artist, created_at FROM songs WHERE id = :sid"
+    ), {"sid": song_id}).fetchone()
+    if not song_row:
         raise HTTPException(404, "Song not found")
-    return _song_detail(s, s.charts)
+
+    rows = db.execute(sql_text(
+        "SELECT c.id, c.difficulty, c.level, c.jacket_url, t.id, t.name"
+        " FROM charts c"
+        " LEFT JOIN chart_tag ct ON ct.chart_id = c.id"
+        " LEFT JOIN tags t ON t.id = ct.tag_id"
+        " WHERE c.song_id = :sid ORDER BY c.id"
+    ), {"sid": song_id}).fetchall()
+
+    charts_map: dict = {}
+    for r in rows:
+        cid = r[0]
+        if cid not in charts_map:
+            charts_map[cid] = {"id": cid, "difficulty": r[1], "level": r[2], "jacket_url": r[3], "tags": []}
+        if r[4] is not None:
+            charts_map[cid]["tags"].append({"id": r[4], "name": r[5]})
+    charts = list(charts_map.values())
+
+    top = max(charts, key=lambda c: c["level"], default=None)
+    jacket = (top["jacket_url"] if top else None) or models.FALLBACK_JACKET_URL
+    return {
+        "id": song_row[0], "title": song_row[1], "artist": song_row[2],
+        "jacket_url": jacket, "created_at": song_row[3], "charts": charts,
+    }
 
 
 @app.get("/api/charts/{chart_id}", response_model=schemas.ChartDetail)
 @limiter.limit("60/minute")
 def get_chart(request: Request, chart_id: int, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=30"
-    c = (
-        db.query(models.Chart)
-        .options(
-            selectinload(models.Chart.images),
-            selectinload(models.Chart.tags),
-            selectinload(models.Chart.song)
-            .selectinload(models.Song.charts)
-            .selectinload(models.Chart.tags),
-        )
-        .filter(models.Chart.id == chart_id)
-        .first()
-    )
-    if not c:
+
+    # Query 1: chart + song (1 round trip)
+    base = db.execute(sql_text(
+        "SELECT c.id, c.difficulty, c.level, c.jacket_url,"
+        " s.id, s.title, s.artist, s.created_at"
+        " FROM charts c JOIN songs s ON s.id = c.song_id WHERE c.id = :cid"
+    ), {"cid": chart_id}).fetchone()
+    if not base:
         raise HTTPException(404, "Chart not found")
-    return schemas.ChartDetail(
-        id=c.id, difficulty=c.difficulty, level=c.level,
-        jacket_url=c.jacket_url or models.FALLBACK_JACKET_URL,
-        song=_song_detail(c.song, c.song.charts),
-        images=[schemas.ChartImageOut.model_validate(i) for i in c.images],
-        tags=[schemas.TagOut.model_validate(t) for t in c.tags],
-    )
+    song_id = base[4]
+
+    # Query 2: all sibling charts with tags (1 round trip, LEFT JOIN)
+    sibling_rows = db.execute(sql_text(
+        "SELECT c.id, c.difficulty, c.level, c.jacket_url, t.id, t.name"
+        " FROM charts c"
+        " LEFT JOIN chart_tag ct ON ct.chart_id = c.id"
+        " LEFT JOIN tags t ON t.id = ct.tag_id"
+        " WHERE c.song_id = :sid ORDER BY c.id"
+    ), {"sid": song_id}).fetchall()
+
+    charts_map: dict = {}
+    for r in sibling_rows:
+        cid = r[0]
+        if cid not in charts_map:
+            charts_map[cid] = {"id": cid, "difficulty": r[1], "level": r[2], "jacket_url": r[3], "tags": []}
+        if r[4] is not None:
+            charts_map[cid]["tags"].append({"id": r[4], "name": r[5]})
+    all_charts = list(charts_map.values())
+
+    # Query 3: images for this chart (1 round trip)
+    image_rows = db.execute(sql_text(
+        "SELECT id, image_url, order_idx, part FROM chart_images"
+        " WHERE chart_id = :cid ORDER BY order_idx"
+    ), {"cid": chart_id}).fetchall()
+
+    top = max(all_charts, key=lambda c: c["level"], default=None)
+    song_jacket = (top["jacket_url"] if top else None) or models.FALLBACK_JACKET_URL
+    this_chart = charts_map.get(chart_id, {})
+
+    return {
+        "id": base[0], "difficulty": base[1], "level": base[2],
+        "jacket_url": base[3] or models.FALLBACK_JACKET_URL,
+        "tags": this_chart.get("tags", []),
+        "images": [{"id": r[0], "image_url": r[1], "order_idx": r[2], "part": r[3]} for r in image_rows],
+        "song": {
+            "id": song_id, "title": base[5], "artist": base[6],
+            "jacket_url": song_jacket, "created_at": base[7], "charts": all_charts,
+        },
+    }
