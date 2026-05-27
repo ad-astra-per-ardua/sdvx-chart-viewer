@@ -5,6 +5,7 @@ import {
   adminCreateTag, adminDeleteChart, adminDeleteChartImage,
   adminDeleteSong, adminGetSong, adminListTags, adminUpdateChart, adminUpdateSong, adminUpload,
 } from "../../api/admin";
+import { invalidateChartCache, invalidateSongCache } from "../../api/client";
 import type { Chart, ChartImage, ChartPart, Difficulty, SongAdmin, Tag } from "../../types";
 
 const PARTS: { key: ChartPart; label: string }[] = [
@@ -93,14 +94,20 @@ export default function AdminSongEdit() {
     setSaving(true);
     try {
       await adminUpdateSong(song.id, { title, artist, keywords });
-      for (const c of song.charts) {
-        const edit = chartEdits[c.id];
-        if (edit) await adminUpdateChart(c.id, {
-          level: edit.level,
-          tag_ids: edit.tagIds,
-          jacket_url: edit.jacketUrl,
-        });
-      }
+      await Promise.all(
+        song.charts.map((c) => {
+          const edit = chartEdits[c.id];
+          if (!edit) return Promise.resolve();
+          return adminUpdateChart(c.id, {
+            level: edit.level,
+            tag_ids: edit.tagIds,
+            jacket_url: edit.jacketUrl,
+          });
+        })
+      );
+      // 클라이언트 캐시 무효화 (이 곡의 모든 채보)
+      song.charts.forEach((c) => invalidateChartCache(c.id));
+      invalidateSongCache(song.id);
       await reloadSong(song.id);
       alert("저장 완료");
     } catch (e: any) { alert("저장 실패: " + e.message); }
@@ -289,12 +296,15 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
   const onUploadImages = async (files: FileList) => {
     setUploading(true);
     try {
-      const currentPartCount = images.filter((img) => img.part === activePart).length;
-      let idx = currentPartCount;
-      for (const f of Array.from(files)) {
-        const up = await adminUpload(f);
-        await adminCreateChartImage({ chart_id: chart.id, image_url: up.url, order_idx: idx++, part: activePart });
-      }
+      const baseIdx = images.filter((img) => img.part === activePart).length;
+      const fileArr = Array.from(files);
+      // 병렬 업로드
+      const urls = await Promise.all(fileArr.map((f) => adminUpload(f).then((r) => r.url)));
+      await Promise.all(
+        urls.map((url, i) =>
+          adminCreateChartImage({ chart_id: chart.id, image_url: url, order_idx: baseIdx + i, part: activePart })
+        )
+      );
       if (fileRef.current) fileRef.current.value = "";
       await reloadImages();
     } catch (e: any) {
@@ -310,6 +320,7 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
     setImages((prev) => prev.filter((i) => i.id !== img.id));
     try {
       await adminDeleteChartImage(img.id);
+      await reloadImages();
     } catch (e: any) {
       await reloadImages();
       alert("삭제 실패: " + e.message);

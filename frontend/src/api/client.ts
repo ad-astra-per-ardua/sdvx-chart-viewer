@@ -54,3 +54,8 @@ export function invalidateChartCache(id?: number) {
   if (id === undefined) _chartCache.clear();
   else _chartCache.delete(id);
 }
+
+export function invalidateSongCache(id?: number) {
+  if (id === undefined) _songCache.clear();
+  else _songCache.delete(id);
+}

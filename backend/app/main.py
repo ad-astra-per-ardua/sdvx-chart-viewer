@@ -1,6 +1,5 @@
 import logging
 import os
-import time
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from pathlib import Path
@@ -16,11 +15,8 @@ from sqlalchemy.orm import Session
 
 from .database import engine, Base, get_db
 from .limiter import limiter
-from . import models, schemas
+from . import models, schemas, cache as song_cache
 from .admin import router as admin_router, UPLOAD_DIR
-
-_song_list_cache: dict = {}   # (sort, q, limit) -> (body_bytes, total_str, monotonic_ts)
-_SONG_CACHE_TTL = 300.0       # 5 minutes
 
 Base.metadata.create_all(bind=engine)
 
@@ -108,8 +104,8 @@ def list_songs(
         limit: Optional[int] = Query(None, ge=1, le=500),
 ):
     cache_key = (sort, q or "", limit or 0)
-    entry = _song_list_cache.get(cache_key)
-    if entry and time.monotonic() - entry[2] < _SONG_CACHE_TTL:
+    entry = song_cache.get(cache_key)
+    if entry:
         response.headers["Cache-Control"] = "public, max-age=300"
         response.headers["X-Total-Count"] = entry[1]
         return Response(content=entry[0], media_type="application/json")
@@ -118,7 +114,7 @@ def list_songs(
     conds = ["c.level >= 1"]
     params: dict = {}
     if q:
-        conds.append("(s.title LIKE :q OR s.artist LIKE :q OR s.keywords LIKE :q)")
+        conds.append("(s.title ILIKE :q OR s.artist ILIKE :q OR s.keywords ILIKE :q)")
         params["q"] = f"%{q}%"
 
     sql = sql_text(
@@ -187,7 +183,7 @@ def list_songs(
         s["jacket_url"] = (top["jacket_url"] if top else None) or fallback
 
     body = orjson.dumps(songs_list)
-    _song_list_cache[cache_key] = (body, str(total), time.monotonic())
+    song_cache.set(cache_key, body, str(total))
     response.headers["X-Total-Count"] = str(total)
     return Response(content=body, media_type="application/json")
 

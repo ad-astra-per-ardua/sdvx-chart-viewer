@@ -136,7 +136,8 @@ export default function Megamix() {
         <div className="slot-body">
           {song ? (
             <div className="slot-song">
-              <img className="slot-jacket" src={song.jacket_url} alt="" />
+              <img className="slot-jacket" src={song.jacket_url || "/no-jacket.png"} alt=""
+                onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
               <div className="slot-info">
                 <div className="slot-title">{song.title}</div>
                 <div className="slot-artist">{song.artist}</div>
@@ -192,7 +193,8 @@ export default function Megamix() {
                       onMouseDown={!taken ? (e) => e.preventDefault() : undefined}
                       onClick={!taken ? () => pickSong(s) : undefined}
                     >
-                      <img className="picker-jacket" src={s.jacket_url} alt="" />
+                      <img className="picker-jacket" src={s.jacket_url || "/no-jacket.png"} alt=""
+                        onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
                       <div className="picker-meta">
                         <div className="picker-title">{s.title}</div>
                         <div className="picker-artist">{s.artist}</div>
@@ -212,7 +214,7 @@ export default function Megamix() {
   return (
     <div className="megamix-shell">
       <div className="megamix-header">
-        <button onClick={()=>{location.href="/"}} className="secondary">← 곡 목록</button>
+        <button onClick={() => nav("/")} className="secondary">← 곡 목록</button>
         <h1 className="megamix-title">메가믹스 선곡 리스트</h1>
         <button className="secondary" onClick={() => {
           if (confirm("목록을 모두 초기화하시겠습니까?")) {

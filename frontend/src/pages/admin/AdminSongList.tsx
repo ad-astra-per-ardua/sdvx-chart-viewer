@@ -31,9 +31,8 @@ const AdminSongRow = memo(function AdminSongRow({ song, onDelete }: RowProps) {
   return (
     <div className="admin-grid-row">
       <div>
-        {song.jacket_url
-          ? <img src={song.jacket_url} alt="" className="thumb" loading="lazy" decoding="async" />
-          : <div className="thumb" />}
+        <img src={song.jacket_url || "/no-jacket.png"} alt="" className="thumb" loading="lazy" decoding="async"
+          onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
       </div>
       <div>
         <div className="t-title">{song.title}</div>

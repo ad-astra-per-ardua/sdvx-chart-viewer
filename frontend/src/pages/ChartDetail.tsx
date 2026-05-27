@@ -75,13 +75,11 @@ export default function ChartDetail() {
     <div className="detail-shell">
       {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
-      <button onClick={()=>{location.href="/"}} className="ghost">← 목록으로</button>
+      <button onClick={() => nav("/")} className="ghost">← 목록으로</button>
 
       <div className="detail-top">
-        {jacketUrl
-          ? <img className="jacket" src={jacketUrl} alt="" />
-          : <div className="jacket jacket-empty" />
-        }
+        <img className="jacket" src={jacketUrl || "/no-jacket.png"} alt=""
+          onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
         <div>
           <h1>{song.title}</h1>
           <div className="artist">{song.artist}</div>

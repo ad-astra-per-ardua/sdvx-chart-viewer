@@ -57,9 +57,7 @@ def seed():
             song = models.Song(
                 title=title,
                 artist=artist,
-                jacket_url=f"https://picsum.photos/seed/{abs(hash(title)) % 10**8}/200/200",
                 created_at=now - timedelta(days=idx),
-                tags=[tag_map[t] for t in tags if t in tag_map],
             )
             for diff, lvl in charts:
                 chart = models.Chart(difficulty=diff, level=float(lvl))

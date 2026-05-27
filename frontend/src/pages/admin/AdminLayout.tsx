@@ -38,7 +38,7 @@ export default function AdminLayout() {
                     })}
                 </nav>
                 <div className="admin-actions">
-                    <button className="ghost" onClick={() => { location.href = "/"; }}>↗ 사이트 보기</button>
+                    <button className="ghost" onClick={() => nav("/")}>↗ 사이트 보기</button>
                     <button className="ghost" onClick={() => {
                         adminLogout().then(() => { setAuthed(false); nav("/admin"); });
                     }}>로그아웃</button>

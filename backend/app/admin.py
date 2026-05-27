@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, 
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session, selectinload
 
-from . import models, schemas
+from . import models, schemas, cache as song_cache
 from .admin_schemas import (
     ChartCreate, ChartImageCreate, ChartUpdate,
     SongCreate, SongUpdate, TagCreate, UploadResponse,
@@ -22,7 +22,6 @@ from .limiter import limiter
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 UPLOAD_DIR = Path("data/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
@@ -31,10 +30,10 @@ _SUPABASE_URL = "https://rajqellsaolsgjtfhdnm.supabase.co"
 _SUPABASE_BUCKET = "uploads"
 
 
-def _storage_headers() -> dict:
+def _storage_headers() -> dict | None:
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if not key:
-        raise HTTPException(500, "SUPABASE_SERVICE_ROLE_KEY not configured")
+        return None
     return {"Authorization": f"Bearer {key}"}
 
 
@@ -42,16 +41,17 @@ def _storage_delete(image_url: str) -> None:
     if f"/storage/v1/object/public/{_SUPABASE_BUCKET}/" not in image_url:
         return
     filename = image_url.split(f"/object/public/{_SUPABASE_BUCKET}/")[-1]
-    if not filename:
+    headers = _storage_headers()
+    if not filename or not headers:
         return
     try:
         httpx.delete(
             f"{_SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{filename}",
-            headers=_storage_headers(),
+            headers=headers,
             timeout=10,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        audit_logger.warning("storage_delete failed url=%s err=%s", image_url, e)
 
 
 COOKIE_NAME = "admin_session"
@@ -233,6 +233,7 @@ def admin_create_song(request: Request, payload: SongCreate, db: Session = Depen
     db.add(song)
     db.commit()
     db.refresh(song)
+    song_cache.invalidate()
     return _build_admin_song_out(song)
 
 
@@ -252,6 +253,7 @@ def admin_update_song(request: Request, song_id: int, payload: SongUpdate, db: S
 
     db.commit()
     db.refresh(song)
+    song_cache.invalidate()
     return _build_admin_song_out(song)
 
 
@@ -263,6 +265,7 @@ def admin_delete_song(request: Request, song_id: int, db: Session = Depends(get_
         raise HTTPException(404, "song not found")
     db.delete(song)
     db.commit()
+    song_cache.invalidate()
 
 
 @router.post("/charts", response_model=schemas.ChartOut, dependencies=[Depends(require_admin)])
@@ -284,6 +287,7 @@ def admin_create_chart(request: Request, payload: ChartCreate, db: Session = Dep
         chart.tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
     db.add(chart)
     db.commit()
+    song_cache.invalidate()
     return (db.query(models.Chart)
             .options(selectinload(models.Chart.tags))
             .filter(models.Chart.id == chart.id)
@@ -301,10 +305,11 @@ def admin_update_chart(request: Request, chart_id: int, payload: ChartUpdate, db
         raise HTTPException(404, "chart not found")
     if payload.difficulty is not None: chart.difficulty = payload.difficulty
     if payload.level is not None: chart.level = payload.level
-    if payload.jacket_url is not None: chart.jacket_url = payload.jacket_url or None
+    if "jacket_url" in payload.model_fields_set: chart.jacket_url = payload.jacket_url
     if payload.tag_ids is not None:
         chart.tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
     db.commit()
+    song_cache.invalidate()
     return (db.query(models.Chart)
             .options(selectinload(models.Chart.tags))
             .filter(models.Chart.id == chart_id)
@@ -319,6 +324,7 @@ def admin_delete_chart(request: Request, chart_id: int, db: Session = Depends(ge
         raise HTTPException(404, "chart not found")
     db.delete(chart)
     db.commit()
+    song_cache.invalidate()
 
 
 @router.post("/chart-images", response_model=schemas.ChartImageOut, dependencies=[Depends(require_admin)])
@@ -362,6 +368,7 @@ def admin_create_tag(request: Request, payload: TagCreate, db: Session = Depends
     db.add(t)
     db.commit()
     db.refresh(t)
+    song_cache.invalidate()
     return t
 
 
@@ -373,3 +380,4 @@ def admin_delete_tag(request: Request, tag_id: int, db: Session = Depends(get_db
         raise HTTPException(404, "tag not found")
     db.delete(t)
     db.commit()
+    song_cache.invalidate()

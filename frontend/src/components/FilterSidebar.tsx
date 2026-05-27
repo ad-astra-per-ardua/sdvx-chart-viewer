@@ -98,8 +98,6 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
       q: "",
     });
 
-  useEffect(() => {}, [meta]);
-
   return (
     <aside className="sidebar">
       <div className="row-header">

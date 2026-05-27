@@ -1,13 +1,25 @@
-"""Import data.json into songs.db (full reset + reimport).
+"""Import data.json into DB (full reset + reimport).
 
-Usage:
-  py backend/scripts/import_songs.py D:/11/arcade-songs-fetch/dist/sdvx/data.json
+Usage — 로컬 SQLite (기본):
+  python backend/scripts/import_songs.py data.json
+
+Usage — 운영 Supabase:
+  DATABASE_URL=postgresql+psycopg2://postgres:pw@db.xxx.supabase.co:5432/postgres \
+    python backend/scripts/import_songs.py data.json
 """
 import json
-import sqlite3
+import os
 import sys
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+
+# backend/ 디렉토리를 경로에 추가해 app.database를 import 가능하게 함
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")
+
+from sqlalchemy import create_engine, text
 
 DIFF_MAP = {
     "novice":   "NOV",
@@ -23,7 +35,7 @@ DIFF_MAP = {
     "nabla":    "NBL",
 }
 
-DB_PATH = Path(__file__).parent.parent / "data" / "songs.db"
+_DEFAULT_DB = f"sqlite:///{Path(__file__).parent.parent / 'data' / 'songs.db'}"
 
 
 def out(msg: str) -> None:
@@ -33,7 +45,7 @@ def out(msg: str) -> None:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        out("Usage: py import_songs.py <path/to/data.json>")
+        out("Usage: python import_songs.py <path/to/data.json>")
         sys.exit(1)
 
     data_path = Path(sys.argv[1])
@@ -41,69 +53,67 @@ def main() -> None:
         out(f"File not found: {data_path}")
         sys.exit(1)
 
+    db_url = os.getenv("DATABASE_URL", _DEFAULT_DB)
     out(f"Reading: {data_path}")
+    out(f"DB:      {db_url.split('@')[-1] if '@' in db_url else db_url}")  # 비밀번호 숨김
+
     with open(data_path, encoding="utf-8") as f:
         data = json.load(f)
 
     songs = data["songs"]
     out(f"Found {len(songs)} songs")
-    out(f"DB path: {DB_PATH}")
 
-    con = sqlite3.connect(str(DB_PATH))
-    con.execute("PRAGMA foreign_keys=ON")
-    cur = con.cursor()
-
-    out("Clearing existing data ...")
-    cur.execute("DELETE FROM chart_tag")
-    cur.execute("DELETE FROM chart_images")
-    cur.execute("DELETE FROM charts")
-    cur.execute("DELETE FROM songs")
-    cur.execute("DELETE FROM tags")
-    con.commit()
-    out("  done.")
-
+    engine = create_engine(db_url)
     now = datetime.now(timezone.utc).isoformat()
     inserted_songs = 0
     inserted_charts = 0
     skipped_diffs: set[str] = set()
 
-    out("Inserting ...")
-    for song in songs:
-        title  = (song.get("title")  or "").strip()
-        artist = (song.get("artist") or "").strip()
-        if not title:
-            continue
+    with engine.begin() as conn:
+        out("Clearing existing data ...")
+        conn.execute(text("DELETE FROM chart_tag"))
+        conn.execute(text("DELETE FROM chart_images"))
+        conn.execute(text("DELETE FROM charts"))
+        conn.execute(text("DELETE FROM songs"))
+        conn.execute(text("DELETE FROM tags"))
+        out("  done.")
 
-        cur.execute(
-            "INSERT INTO songs (title, artist, keywords, created_at) VALUES (?, ?, '', ?)",
-            (title, artist, now),
-        )
-        song_id = cur.lastrowid
-        inserted_songs += 1
-
-        for sheet in song.get("sheets") or []:
-            diff_raw = sheet.get("difficulty", "")
-            diff = DIFF_MAP.get(diff_raw)
-            if diff is None:
-                skipped_diffs.add(diff_raw)
+        out("Inserting ...")
+        for song in songs:
+            title  = (song.get("title")  or "").strip()
+            artist = (song.get("artist") or "").strip()
+            if not title:
                 continue
 
-            level = sheet.get("levelValue")
-            if level is None:
-                try:
-                    level = float(sheet.get("level", 0))
-                except (ValueError, TypeError):
-                    level = 0.0
+            row = conn.execute(
+                text("INSERT INTO songs (title, artist, keywords, created_at)"
+                     " VALUES (:title, :artist, '', :now) RETURNING id"),
+                {"title": title, "artist": artist, "now": now},
+            ).fetchone()
+            song_id = row[0]
+            inserted_songs += 1
 
-            cur.execute(
-                "INSERT OR IGNORE INTO charts (song_id, difficulty, level, jacket_url)"
-                " VALUES (?, ?, ?, NULL)",
-                (song_id, diff, float(level)),
-            )
-            inserted_charts += 1
+            for sheet in song.get("sheets") or []:
+                diff_raw = sheet.get("difficulty", "")
+                diff = DIFF_MAP.get(diff_raw)
+                if diff is None:
+                    skipped_diffs.add(diff_raw)
+                    continue
 
-    con.commit()
-    con.close()
+                level = sheet.get("levelValue")
+                if level is None:
+                    try:
+                        level = float(sheet.get("level", 0))
+                    except (ValueError, TypeError):
+                        level = 0.0
+
+                conn.execute(
+                    text("INSERT INTO charts (song_id, difficulty, level, jacket_url)"
+                         " VALUES (:sid, :diff, :level, NULL)"
+                         " ON CONFLICT DO NOTHING"),
+                    {"sid": song_id, "diff": diff, "level": float(level)},
+                )
+                inserted_charts += 1
 
     out(f"\nDone!")
     out(f"  Songs:  {inserted_songs}")
