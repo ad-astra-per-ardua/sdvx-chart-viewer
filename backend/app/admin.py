@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import secrets
@@ -6,7 +7,7 @@ from pathlib import Path
 from typing import List
 
 import orjson
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session, selectinload
 
@@ -27,6 +28,11 @@ ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
+COOKIE_NAME = "admin_session"
+
+audit_logger = logging.getLogger("sdvx.audit")
+
+
 def _admin_token() -> str:
     token = os.getenv("ADMIN_TOKEN", "")
     if not token:
@@ -34,18 +40,53 @@ def _admin_token() -> str:
     return token
 
 
-def require_admin(x_admin_token: str = Header(default="")) -> None:
+def _cookie_is_secure() -> bool:
+    return os.getenv("PUBLIC_BASE_URL", "").startswith("https://")
+
+
+def require_admin(request: Request) -> None:
     expected = _admin_token()
-    if not secrets.compare_digest(x_admin_token or "", expected):
+    token = request.cookies.get(COOKIE_NAME, "")
+    ip = request.client.host if request.client else "unknown"
+    if not secrets.compare_digest(token or "", expected):
+        audit_logger.warning("ADMIN_AUTH_FAIL  ip=%s  path=%s", ip, request.url.path)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid admin token")
+    audit_logger.info("ADMIN_ACTION  ip=%s  %s %s", ip, request.method, request.url.path)
 
 
 @router.post("/login")
 @limiter.limit("5/minute")
-def login(request: Request, payload: dict):
+def login(request: Request, response: Response, payload: dict):
     token = (payload or {}).get("token", "")
     if not secrets.compare_digest(token, _admin_token()):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid admin token")
+    secure = _cookie_is_secure()
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=secure,
+        samesite="none" if secure else "lax",
+        path="/api/admin",
+        max_age=86400 * 7,
+    )
+    return {"ok": True}
+
+
+@router.post("/logout", status_code=204)
+def logout(response: Response):
+    secure = _cookie_is_secure()
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path="/api/admin",
+        samesite="none" if secure else "lax",
+        secure=secure,
+    )
+
+
+@router.get("/session")
+@limiter.limit("30/minute")
+def check_session(request: Request, _: None = Depends(require_admin)):
     return {"ok": True}
 
 
@@ -53,7 +94,8 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 @router.post("/upload", response_model=UploadResponse, dependencies=[Depends(require_admin)])
-def upload(file: UploadFile = File(...)):
+@limiter.limit("20/minute")
+def upload(request: Request, file: UploadFile = File(...)):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXT:
         raise HTTPException(400, f"unsupported extension {ext!r}")
@@ -159,7 +201,8 @@ def admin_get_song(song_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/songs", response_model=schemas.SongAdminOut, dependencies=[Depends(require_admin)])
-def admin_create_song(payload: SongCreate, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_create_song(request: Request, payload: SongCreate, db: Session = Depends(get_db)):
     song = models.Song(title=payload.title, artist=payload.artist,
                        keywords=payload.keywords)
     db.add(song)
@@ -169,7 +212,8 @@ def admin_create_song(payload: SongCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/songs/{song_id}", response_model=schemas.SongAdminOut, dependencies=[Depends(require_admin)])
-def admin_update_song(song_id: int, payload: SongUpdate, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_update_song(request: Request, song_id: int, payload: SongUpdate, db: Session = Depends(get_db)):
     song = (db.query(models.Song)
             .options(selectinload(models.Song.charts).selectinload(models.Chart.tags))
             .filter(models.Song.id == song_id)
@@ -187,7 +231,8 @@ def admin_update_song(song_id: int, payload: SongUpdate, db: Session = Depends(g
 
 
 @router.delete("/songs/{song_id}", status_code=204, dependencies=[Depends(require_admin)])
-def admin_delete_song(song_id: int, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_delete_song(request: Request, song_id: int, db: Session = Depends(get_db)):
     song = db.query(models.Song).filter(models.Song.id == song_id).first()
     if not song:
         raise HTTPException(404, "song not found")
@@ -196,7 +241,8 @@ def admin_delete_song(song_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/charts", response_model=schemas.ChartOut, dependencies=[Depends(require_admin)])
-def admin_create_chart(payload: ChartCreate, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_create_chart(request: Request, payload: ChartCreate, db: Session = Depends(get_db)):
     if not db.query(models.Song).filter(models.Song.id == payload.song_id).first():
         raise HTTPException(404, "song not found")
     existing = (db.query(models.Chart)
@@ -220,7 +266,8 @@ def admin_create_chart(payload: ChartCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/charts/{chart_id}", response_model=schemas.ChartOut, dependencies=[Depends(require_admin)])
-def admin_update_chart(chart_id: int, payload: ChartUpdate, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_update_chart(request: Request, chart_id: int, payload: ChartUpdate, db: Session = Depends(get_db)):
     chart = (db.query(models.Chart)
              .options(selectinload(models.Chart.tags))
              .filter(models.Chart.id == chart_id)
@@ -240,7 +287,8 @@ def admin_update_chart(chart_id: int, payload: ChartUpdate, db: Session = Depend
 
 
 @router.delete("/charts/{chart_id}", status_code=204, dependencies=[Depends(require_admin)])
-def admin_delete_chart(chart_id: int, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_delete_chart(request: Request, chart_id: int, db: Session = Depends(get_db)):
     chart = db.query(models.Chart).filter(models.Chart.id == chart_id).first()
     if not chart:
         raise HTTPException(404, "chart not found")
@@ -249,7 +297,8 @@ def admin_delete_chart(chart_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/chart-images", response_model=schemas.ChartImageOut, dependencies=[Depends(require_admin)])
-def admin_create_chart_image(payload: ChartImageCreate, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_create_chart_image(request: Request, payload: ChartImageCreate, db: Session = Depends(get_db)):
     if not db.query(models.Chart).filter(models.Chart.id == payload.chart_id).first():
         raise HTTPException(404, "chart not found")
     img = models.ChartImage(chart_id=payload.chart_id,
@@ -263,7 +312,8 @@ def admin_create_chart_image(payload: ChartImageCreate, db: Session = Depends(ge
 
 
 @router.delete("/chart-images/{image_id}", status_code=204, dependencies=[Depends(require_admin)])
-def admin_delete_chart_image(image_id: int, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_delete_chart_image(request: Request, image_id: int, db: Session = Depends(get_db)):
     img = db.query(models.ChartImage).filter(models.ChartImage.id == image_id).first()
     if not img:
         raise HTTPException(404, "image not found")
@@ -277,7 +327,8 @@ def admin_list_tags(db: Session = Depends(get_db)):
 
 
 @router.post("/tags", response_model=schemas.TagOut, dependencies=[Depends(require_admin)])
-def admin_create_tag(payload: TagCreate, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_create_tag(request: Request, payload: TagCreate, db: Session = Depends(get_db)):
     existing = db.query(models.Tag).filter(models.Tag.name == payload.name).first()
     if existing:
         return existing
@@ -289,7 +340,8 @@ def admin_create_tag(payload: TagCreate, db: Session = Depends(get_db)):
 
 
 @router.delete("/tags/{tag_id}", status_code=204, dependencies=[Depends(require_admin)])
-def admin_delete_tag(tag_id: int, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def admin_delete_tag(request: Request, tag_id: int, db: Session = Depends(get_db)):
     t = db.query(models.Tag).filter(models.Tag.id == tag_id).first()
     if not t:
         raise HTTPException(404, "tag not found")

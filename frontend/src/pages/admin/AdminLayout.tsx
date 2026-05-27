@@ -1,14 +1,23 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { adminAuth, adminLogin } from "../../api/admin";
+import { adminCheckSession, adminLogin, adminLogout } from "../../api/admin";
 
 export default function AdminLayout() {
-    const [authed, setAuthed] = useState(!!adminAuth.token);
+    const [authed, setAuthed] = useState<boolean | null>(null);
     const loc = useLocation();
     const nav = useNavigate();
 
-    useEffect(() => { setAuthed(!!adminAuth.token); }, [loc.pathname]);
+    useEffect(() => {
+        adminCheckSession().then(setAuthed);
+    }, []);
 
+    useEffect(() => {
+        const onUnauth = () => setAuthed(false);
+        window.addEventListener("admin-unauthorized", onUnauth);
+        return () => window.removeEventListener("admin-unauthorized", onUnauth);
+    }, []);
+
+    if (authed === null) return null;
     if (!authed) return <AdminLogin onAuthed={() => setAuthed(true)} />;
 
     const tabs = [
@@ -31,7 +40,7 @@ export default function AdminLayout() {
                 <div className="admin-actions">
                     <button className="ghost" onClick={() => { location.href = "/"; }}>↗ 사이트 보기</button>
                     <button className="ghost" onClick={() => {
-                        adminAuth.clear(); setAuthed(false); nav("/admin");
+                        adminLogout().then(() => { setAuthed(false); nav("/admin"); });
                     }}>로그아웃</button>
                 </div>
             </header>

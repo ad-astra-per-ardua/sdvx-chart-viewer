@@ -1,27 +1,15 @@
 import type { Chart, ChartImage, Song, SongAdmin, Tag } from "../types";
 
-const TOKEN_KEY = "adminToken";
-
-export const adminAuth = {
-  get token(): string { return localStorage.getItem(TOKEN_KEY) ?? ""; },
-  set token(v: string) {
-    if (v) localStorage.setItem(TOKEN_KEY, v);
-    else   localStorage.removeItem(TOKEN_KEY);
-  },
-  clear() { localStorage.removeItem(TOKEN_KEY); },
-};
-
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
-    "X-Admin-Token": adminAuth.token,
     ...(init.headers as Record<string, string> | undefined ?? {}),
   };
   if (init.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const r = await fetch(path, { ...init, headers });
+  const r = await fetch(path, { ...init, headers, credentials: "include" });
   if (r.status === 401) {
-    adminAuth.clear();
+    window.dispatchEvent(new Event("admin-unauthorized"));
     throw new Error("unauthorized");
   }
   if (!r.ok) throw new Error(`${path} -> ${r.status} ${await r.text()}`);
@@ -34,10 +22,18 @@ export const adminLogin = (token: string) =>
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
+    credentials: "include",
   }).then((r) => {
     if (!r.ok) throw new Error("invalid token");
-    adminAuth.token = token;
   });
+
+export const adminCheckSession = (): Promise<boolean> =>
+  fetch("/api/admin/session", { credentials: "include" })
+    .then((r) => r.ok)
+    .catch(() => false);
+
+export const adminLogout = (): Promise<void> =>
+  fetch("/api/admin/logout", { method: "POST", credentials: "include" }).then(() => {});
 
 export const adminListSongs = () => req<SongAdmin[]>("/api/admin/songs");
 
