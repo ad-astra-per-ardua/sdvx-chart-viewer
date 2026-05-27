@@ -6,8 +6,8 @@ _BLOCKED_SCHEMES = re.compile(r'^(javascript|vbscript|data|file|ftp)\s*:', re.IG
 
 
 def _validate_url(v: Optional[str]) -> Optional[str]:
-    if v is None:
-        return v
+    if not v:
+        return None
     if _BLOCKED_SCHEMES.match(v):
         raise ValueError("URL scheme not allowed")
     if not (v.startswith("http://") or v.startswith("https://") or v.startswith("/uploads/")):
