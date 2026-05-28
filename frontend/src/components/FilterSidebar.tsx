@@ -72,7 +72,7 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setQuery({ ...query, q: val });
-    }, 10);
+    }, 120);
   };
 
   const onLevelMin = (v: number) =>
@@ -121,7 +121,7 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
       </div>
 
       <div className="section-label">난이도</div>
-      <div className="chip-row">
+      <div className="chip-row" style={{ minHeight: 28 }}>
         {(meta?.difficulties ?? []).map((d) => (
           <button
             key={d}
@@ -133,7 +133,7 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
       </div>
 
       <div className="section-label">태그</div>
-      <div className="chip-row">
+      <div className="chip-row" style={{ minHeight: 56 }}>
         {(meta?.tags ?? []).map((t) => (
           <button
             key={t}

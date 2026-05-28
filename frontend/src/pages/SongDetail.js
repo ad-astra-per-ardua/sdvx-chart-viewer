@@ -18,5 +18,5 @@ export default function SongDetail() {
     }, [id]);
     if (!song)
         return _jsx("div", { className: "detail-shell", children: "\uBD88\uB7EC\uC624\uB294 \uC911\u2026" });
-    return (_jsxs("div", { className: "detail-shell", children: [_jsx("button", { onClick: () => { location.href = "/"; }, className: "Ghost", children: "\u2190 \uBAA9\uB85D\uC73C\uB85C" }), _jsx("h1", { children: song.title })] }));
+    return (_jsxs("div", { className: "detail-shell", children: [_jsx("button", { onClick: () => nav("/"), className: "ghost", children: "\u2190 \uBAA9\uB85D\uC73C\uB85C" }), _jsx("h1", { children: song.title })] }));
 }

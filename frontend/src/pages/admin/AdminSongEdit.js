@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { adminCreateChart, adminCreateChartImage, adminCreateSong, adminCreateTag, adminDeleteChart, adminDeleteChartImage, adminDeleteSong, adminGetSong, adminListTags, adminUpdateChart, adminUpdateSong, adminUpload, } from "../../api/admin";
+import { invalidateChartCache, invalidateSongCache } from "../../api/client";
 const PARTS = [
     { key: "intro", label: "인트로" },
     { key: "outro", label: "아웃트로" },
@@ -77,15 +78,19 @@ export default function AdminSongEdit() {
         setSaving(true);
         try {
             await adminUpdateSong(song.id, { title, artist, keywords });
-            for (const c of song.charts) {
+            await Promise.all(song.charts.map((c) => {
                 const edit = chartEdits[c.id];
-                if (edit)
-                    await adminUpdateChart(c.id, {
-                        level: edit.level,
-                        tag_ids: edit.tagIds,
-                        jacket_url: edit.jacketUrl,
-                    });
-            }
+                if (!edit)
+                    return Promise.resolve();
+                return adminUpdateChart(c.id, {
+                    level: edit.level,
+                    tag_ids: edit.tagIds,
+                    jacket_url: edit.jacketUrl,
+                });
+            }));
+            // 클라이언트 캐시 무효화 (이 곡의 모든 채보)
+            song.charts.forEach((c) => invalidateChartCache(c.id));
+            invalidateSongCache(song.id);
             await reloadSong(song.id);
             alert("저장 완료");
         }
@@ -108,7 +113,7 @@ export default function AdminSongEdit() {
             alert("태그 생성 실패: " + e.message);
         }
     };
-    return (_jsxs("div", { children: [_jsxs("div", { className: "admin-toolbar", children: [_jsx("h2", { children: isNew ? "+ 새 곡 추가" : `곡 편집: ${song?.title ?? "…"}` }), _jsx("div", { className: "grow" }), _jsx("button", { className: "ghost", onClick: () => nav("/admin"), children: "\u2190 \uBAA9\uB85D\uC73C\uB85C" })] }), _jsxs("section", { className: "card", children: [_jsx("h3", { children: "\uAE30\uBCF8 \uC815\uBCF4" }), _jsxs("div", { className: "form-grid", children: [_jsxs("label", { children: ["\uC81C\uBAA9", _jsx("input", { value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\uACE1 \uC81C\uBAA9" })] }), _jsxs("label", { children: ["\uC544\uD2F0\uC2A4\uD2B8", _jsx("input", { value: artist, onChange: (e) => setArtist(e.target.value), placeholder: "\uC544\uD2F0\uC2A4\uD2B8" })] }), _jsxs("label", { className: "full", children: ["\uAC80\uC0C9 \uD0A4\uC6CC\uB4DC ", _jsx("span", { className: "muted", children: "(\uC77C\uBC18 \uC720\uC800\uC5D0\uAC8C \uBE44\uACF5\uAC1C)" }), _jsx("textarea", { value: keywords, onChange: (e) => setKeywords(e.target.value), placeholder: "\uC608: \uB1CC\uC808 \uC6D0\uD578\uB4DC SDVX5 \u963F\u6CE2\u8E0A\u308A (\uACF5\uBC31\u00B7\uC27C\uD45C \uAD6C\uBD84)", rows: 2 })] })] }), isNew && (_jsx("div", { className: "form-actions", children: _jsx("button", { className: "primary", onClick: onCreateSong, disabled: saving, children: saving ? "저장 중…" : "곡 생성" }) }))] }), !isNew && song && (_jsxs(_Fragment, { children: [_jsx(ChartManager, { song: song, allTags: allTags, chartEdits: chartEdits, onEditChange: setChartEdit, onCreateTag: onCreateTag, onReload: () => reloadSong(song.id) }), _jsx("section", { className: "card", children: _jsx("div", { className: "form-actions", children: _jsx("button", { className: "primary", onClick: onSaveAll, disabled: saving, children: saving ? "저장 중…" : "변경 저장" }) }) }), _jsx(DangerZone, { song: song })] }))] }));
+    return (_jsxs("div", { children: [_jsxs("div", { className: "admin-toolbar", children: [_jsx("h2", { children: isNew ? "+ 새 곡 추가" : `곡 편집: ${song?.title ?? "…"}` }), _jsx("div", { className: "grow" }), _jsx("button", { className: "ghost", onClick: () => nav("/admin"), children: "\u2190 \uBAA9\uB85D\uC73C\uB85C" })] }), _jsxs("section", { className: "card", children: [_jsx("h3", { children: "\uAE30\uBCF8 \uC815\uBCF4" }), _jsxs("div", { className: "form-grid", children: [_jsxs("label", { children: ["\uC81C\uBAA9", _jsx("input", { value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\uACE1 \uC81C\uBAA9" })] }), _jsxs("label", { children: ["\uC544\uD2F0\uC2A4\uD2B8", _jsx("input", { value: artist, onChange: (e) => setArtist(e.target.value), placeholder: "\uC544\uD2F0\uC2A4\uD2B8" })] }), _jsxs("label", { className: "full", children: ["\uAC80\uC0C9 \uD0A4\uC6CC\uB4DC ", _jsx("span", { className: "muted", children: "(\uC77C\uBC18 \uC720\uC800\uC5D0\uAC8C \uBE44\uACF5\uAC1C)" }), _jsx("textarea", { value: keywords, onChange: (e) => setKeywords(e.target.value), placeholder: "\uC608: \uB1CC\uC808 \uC6D0\uD578\uB4DC SDVX (\uACF5\uBC31\u00B7\uC27C\uD45C \uAD6C\uBD84)", rows: 2 })] })] }), isNew && (_jsx("div", { className: "form-actions", children: _jsx("button", { className: "primary", onClick: onCreateSong, disabled: saving, children: saving ? "저장 중…" : "곡 생성" }) }))] }), !isNew && song && (_jsxs(_Fragment, { children: [_jsx(ChartManager, { song: song, allTags: allTags, chartEdits: chartEdits, onEditChange: setChartEdit, onCreateTag: onCreateTag, onReload: () => reloadSong(song.id) }), _jsx("section", { className: "card", children: _jsx("div", { className: "form-actions", children: _jsx("button", { className: "primary", onClick: onSaveAll, disabled: saving, children: saving ? "저장 중…" : "변경 저장" }) }) }), _jsx(DangerZone, { song: song })] }))] }));
 }
 function ChartManager({ song, allTags, chartEdits, onEditChange, onCreateTag, onReload }) {
     const used = useMemo(() => new Set(song.charts.map((c) => c.difficulty)), [song.charts]);
@@ -172,12 +177,11 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
     const onUploadImages = async (files) => {
         setUploading(true);
         try {
-            const currentPartCount = images.filter((img) => img.part === activePart).length;
-            let idx = currentPartCount;
-            for (const f of Array.from(files)) {
-                const up = await adminUpload(f);
-                await adminCreateChartImage({ chart_id: chart.id, image_url: up.url, order_idx: idx++, part: activePart });
-            }
+            const baseIdx = images.filter((img) => img.part === activePart).length;
+            const fileArr = Array.from(files);
+            // 병렬 업로드
+            const urls = await Promise.all(fileArr.map((f) => adminUpload(f).then((r) => r.url)));
+            await Promise.all(urls.map((url, i) => adminCreateChartImage({ chart_id: chart.id, image_url: url, order_idx: baseIdx + i, part: activePart })));
             if (fileRef.current)
                 fileRef.current.value = "";
             await reloadImages();
@@ -200,6 +204,7 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
         setImages((prev) => prev.filter((i) => i.id !== img.id));
         try {
             await adminDeleteChartImage(img.id);
+            await reloadImages();
         }
         catch (e) {
             await reloadImages();

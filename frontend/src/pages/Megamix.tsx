@@ -137,6 +137,7 @@ export default function Megamix() {
           {song ? (
             <div className="slot-song">
               <img className="slot-jacket" src={song.jacket_url || "/no-jacket.png"} alt=""
+                width={95} height={95} loading="lazy" decoding="async"
                 onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
               <div className="slot-info">
                 <div className="slot-title">{song.title}</div>
@@ -194,6 +195,7 @@ export default function Megamix() {
                       onClick={!taken ? () => pickSong(s) : undefined}
                     >
                       <img className="picker-jacket" src={s.jacket_url || "/no-jacket.png"} alt=""
+                        width={36} height={36} loading="lazy" decoding="async"
                         onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
                       <div className="picker-meta">
                         <div className="picker-title">{s.title}</div>

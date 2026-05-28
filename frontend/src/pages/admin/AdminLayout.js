@@ -1,12 +1,21 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { adminAuth, adminLogin } from "../../api/admin";
+import { adminCheckSession, adminLogin, adminLogout } from "../../api/admin";
 export default function AdminLayout() {
-    const [authed, setAuthed] = useState(!!adminAuth.token);
+    const [authed, setAuthed] = useState(null);
     const loc = useLocation();
     const nav = useNavigate();
-    useEffect(() => { setAuthed(!!adminAuth.token); }, [loc.pathname]);
+    useEffect(() => {
+        adminCheckSession().then(setAuthed);
+    }, []);
+    useEffect(() => {
+        const onUnauth = () => setAuthed(false);
+        window.addEventListener("admin-unauthorized", onUnauth);
+        return () => window.removeEventListener("admin-unauthorized", onUnauth);
+    }, []);
+    if (authed === null)
+        return null;
     if (!authed)
         return _jsx(AdminLogin, { onAuthed: () => setAuthed(true) });
     const tabs = [
@@ -16,10 +25,8 @@ export default function AdminLayout() {
     return (_jsxs("div", { className: "admin-shell", children: [_jsxs("header", { className: "admin-header", children: [_jsx("div", { className: "brand", children: "\uD83D\uDEE0 ADMIN" }), _jsx("nav", { className: "admin-tabs", children: tabs.map((t) => {
                             const active = t.end ? loc.pathname === t.to : loc.pathname.startsWith(t.to);
                             return (_jsx(Link, { to: t.to, className: active ? "active" : "", children: t.label }, t.to));
-                        }) }), _jsxs("div", { className: "admin-actions", children: [_jsx("button", { className: "ghost", onClick: () => { location.href = "/"; }, children: "\u2197 \uC0AC\uC774\uD2B8 \uBCF4\uAE30" }), _jsx("button", { className: "ghost", onClick: () => {
-                                    adminAuth.clear();
-                                    setAuthed(false);
-                                    nav("/admin");
+                        }) }), _jsxs("div", { className: "admin-actions", children: [_jsx("button", { className: "ghost", onClick: () => nav("/"), children: "\u2197 \uC0AC\uC774\uD2B8 \uBCF4\uAE30" }), _jsx("button", { className: "ghost", onClick: () => {
+                                    adminLogout().then(() => { setAuthed(false); nav("/admin"); });
                                 }, children: "\uB85C\uADF8\uC544\uC6C3" })] })] }), _jsx("main", { className: "admin-main", children: _jsx(Outlet, {}) })] }));
 }
 function AdminLogin({ onAuthed }) {

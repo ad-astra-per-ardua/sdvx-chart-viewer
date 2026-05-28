@@ -87,7 +87,7 @@ app.include_router(admin_router)
 @app.get("/api/meta", response_model=schemas.FilterMeta)
 @limiter.limit("60/minute")
 def get_meta(request: Request, response: Response, db: Session = Depends(get_db)):
-    response.headers["Cache-Control"] = "public, max-age=60"
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
     diffs = ["NOV", "ADV", "EXH", "MXM", "INF", "GRV", "HVN", "VVD", "XCD", "ULT", "NBL"]
     tags = [r[0] for r in db.execute(sql_text("SELECT name FROM tags ORDER BY name")).fetchall()]
     return schemas.FilterMeta(difficulties=diffs, tags=tags, level_min=1, level_max=20.9)
@@ -106,11 +106,11 @@ def list_songs(
     cache_key = (sort, q or "", limit or 0)
     entry = song_cache.get(cache_key)
     if entry:
-        response.headers["Cache-Control"] = "public, max-age=300"
+        response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
         response.headers["X-Total-Count"] = entry[1]
         return Response(content=entry[0], media_type="application/json")
 
-    response.headers["Cache-Control"] = "public, max-age=60"
+    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
     conds = ["c.level >= 1"]
     params: dict = {}
     if q:
@@ -191,7 +191,7 @@ def list_songs(
 @app.get("/api/songs/{song_id}", response_model=schemas.SongDetail)
 @limiter.limit("60/minute")
 def get_song(request: Request, song_id: int, response: Response, db: Session = Depends(get_db)):
-    response.headers["Cache-Control"] = "public, max-age=30"
+    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
     song_row = db.execute(sql_text(
         "SELECT id, title, artist, created_at FROM songs WHERE id = :sid"
     ), {"sid": song_id}).fetchone()
@@ -226,7 +226,7 @@ def get_song(request: Request, song_id: int, response: Response, db: Session = D
 @app.get("/api/charts/{chart_id}", response_model=schemas.ChartDetail)
 @limiter.limit("60/minute")
 def get_chart(request: Request, chart_id: int, response: Response, db: Session = Depends(get_db)):
-    response.headers["Cache-Control"] = "public, max-age=30"
+    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
 
     # Query 1: chart + song (1 round trip)
     base = db.execute(sql_text(

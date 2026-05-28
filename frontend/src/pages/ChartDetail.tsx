@@ -78,8 +78,17 @@ export default function ChartDetail() {
       <button onClick={() => nav("/")} className="ghost">← 목록으로</button>
 
       <div className="detail-top">
-        <img className="jacket" src={jacketUrl || "/no-jacket.png"} alt=""
-          onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
+        <img
+          className="jacket"
+          src={jacketUrl || "/no-jacket.png"}
+          alt=""
+          width={200}
+          height={200}
+          loading="eager"
+          decoding="sync"
+          {...({ fetchpriority: "high" } as any)}
+          onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }}
+        />
         <div>
           <h1>{song.title}</h1>
           <div className="artist">{song.artist}</div>

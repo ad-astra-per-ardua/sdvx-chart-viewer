@@ -8,9 +8,10 @@ const ALL_DIFFS: Difficulty[] =
 interface Props {
   song: Song;
   titleTargetChartId: number;
+  priority?: boolean;
 }
 
-export default memo(function SongRow({ song, titleTargetChartId }: Props) {
+export default memo(function SongRow({ song, titleTargetChartId, priority }: Props) {
   const nav = useNavigate();
   const byDiff = new Map(song.charts.map((c) => [c.difficulty, c]));
 
@@ -22,7 +23,11 @@ export default memo(function SongRow({ song, titleTargetChartId }: Props) {
         className="jacket"
         src={jacketUrl || "/no-jacket.png"}
         alt=""
-        loading="lazy"
+        width={64}
+        height={64}
+        loading={priority ? "eager" : "lazy"}
+        decoding={priority ? "sync" : "async"}
+        {...(priority ? { fetchpriority: "high" as any } : {})}
         onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/no-jacket.png"; }}
       />
 

@@ -2,13 +2,11 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 const ALL_DIFFS = ["NOV", "ADV", "EXH", "MXM", "INF", "GRV", "HVN", "VVD", "XCD", "ULT", "NBL"];
-export default memo(function SongRow({ song, titleTargetChartId }) {
+export default memo(function SongRow({ song, titleTargetChartId, priority }) {
     const nav = useNavigate();
     const byDiff = new Map(song.charts.map((c) => [c.difficulty, c]));
     const jacketUrl = song.jacket_url || song.charts.find((c) => c.jacket_url)?.jacket_url;
-    return (_jsxs("div", { className: "song-row", children: [jacketUrl
-                ? _jsx("img", { className: "jacket", src: jacketUrl, alt: "", loading: "lazy" })
-                : _jsx("div", { className: "jacket jacket-empty" }), _jsxs("div", { className: "meta", children: [_jsx("div", { className: "title", onClick: () => nav(`/charts/${titleTargetChartId}`), children: song.title }), _jsx("div", { className: "artist", children: song.artist })] }), _jsx("div", { className: "chart-pills", children: ALL_DIFFS.map((d) => {
+    return (_jsxs("div", { className: "song-row", children: [_jsx("img", { className: "jacket", src: jacketUrl || "/no-jacket.png", alt: "", width: 64, height: 64, loading: priority ? "eager" : "lazy", decoding: priority ? "sync" : "async", ...(priority ? { fetchpriority: "high" } : {}), onError: (e) => { e.currentTarget.src = "/no-jacket.png"; } }), _jsxs("div", { className: "meta", children: [_jsx("div", { className: "title", onClick: () => nav(`/charts/${titleTargetChartId}`), children: song.title }), _jsx("div", { className: "artist", children: song.artist })] }), _jsx("div", { className: "chart-pills", children: ALL_DIFFS.map((d) => {
                     const c = byDiff.get(d);
                     if (!c)
                         return null;

@@ -102,12 +102,18 @@ export default function SongList() {
         getItemKey: (i) => songs[i].id,
     });
     const virtualItems = virtualizer.getVirtualItems();
-    return (_jsxs("div", { className: "app-shell", children: [_jsxs("div", { className: "discover-header", children: [_jsxs("div", { className: "left", children: [_jsx("div", { className: "label", children: "TOTAL" }), _jsxs("div", { className: "count", children: [songs.length.toLocaleString(), _jsx("span", { className: "unit", children: "\uACE1" })] })] }), _jsxs("div", { className: "sort-tabs", children: [_jsx("button", { className: query.sort === "level_desc" ? "active" : "", onClick: () => setQuery({ ...query, sort: "level_desc" }), children: "Lv\u2193" }), _jsx("button", { className: query.sort === "level_asc" ? "active" : "", onClick: () => setQuery({ ...query, sort: "level_asc" }), children: "Lv\u2191" }), _jsx("button", { className: query.sort === "new" ? "active" : "", onClick: () => setQuery({ ...query, sort: "new" }), children: "\uCD5C\uC2E0" })] }), _jsx(Link, { to: "/megamix", className: "megamix-nav-btn", children: "\uC88B\uC740 \uC2B9\uBD80" })] }), _jsx(LevelQuickBar, { active: query.quick_level, onPick: (lv) => setQuery({ ...query, quick_level: lv }) }), _jsx(FilterSidebar, { meta: meta, query: query, setQuery: setQuery }), _jsx("div", { ref: listRef, className: "song-list", style: {
+    return (_jsxs("div", { className: "app-shell", children: [_jsxs("div", { className: "discover-header", children: [_jsxs("div", { className: "left", children: [_jsx("div", { className: "label", children: "TOTAL" }), _jsxs("div", { className: "count", children: [songs.length.toLocaleString(), _jsx("span", { className: "unit", children: "\uACE1" })] })] }), _jsxs("div", { className: "sort-tabs", children: [_jsx("button", { className: query.sort === "level_desc" ? "active" : "", onClick: () => setQuery({ ...query, sort: "level_desc" }), children: "Lv \u2193" }), _jsx("button", { className: query.sort === "level_asc" ? "active" : "", onClick: () => setQuery({ ...query, sort: "level_asc" }), children: "Lv \u2191" }), _jsx("button", { className: query.sort === "new" ? "active" : "", onClick: () => setQuery({ ...query, sort: "new" }), children: "\uCD5C\uC2E0" })] }), _jsx(Link, { to: "/megamix", className: "megamix-nav-btn", children: "\uC88B\uC740 \uC2B9\uBD80" })] }), _jsx(LevelQuickBar, { active: query.quick_level, onPick: (lv) => setQuery({ ...query, quick_level: lv }) }), _jsx(FilterSidebar, { meta: meta, query: query, setQuery: setQuery }), _jsx("div", { ref: listRef, className: "song-list", style: {
                     position: "relative",
+                    minHeight: loading ? `${ROW_ESTIMATE * 8}px` : undefined,
                     height: songs.length === 0 ? undefined : `${virtualizer.getTotalSize()}px`,
                     opacity: isPending ? 0.6 : undefined,
                     transition: "opacity 0.15s",
-                }, children: loading ? (_jsx("div", { className: "empty", children: "\uBD88\uB7EC\uC624\uB294 \uC911\u2026" })) : songs.length === 0 ? (_jsx("div", { className: "empty", children: "\uC870\uAC74\uC5D0 \uB9DE\uB294 \uACE1\uC774 \uC5C6\uC5B4\uC694. \uD544\uD130\uB97C \uD480\uC5B4\uBCF4\uC138\uC694." })) : (virtualItems.map((vi) => {
+                }, children: loading ? (Array.from({ length: 6 }).map((_, i) => (_jsx("div", { className: "song-row skeleton-row", style: {
+                        position: "absolute",
+                        top: 0, left: 0, width: "100%",
+                        transform: `translateY(${i * (ROW_ESTIMATE)}px)`,
+                        height: ROW_ESTIMATE - 10,
+                    }, "aria-hidden": true }, `sk-${i}`)))) : songs.length === 0 ? (_jsx("div", { className: "empty", children: "\uC870\uAC74\uC5D0 \uB9DE\uB294 \uACE1\uC774 \uC5C6\uC5B4\uC694. \uD544\uD130\uB97C \uD480\uC5B4\uBCF4\uC138\uC694." })) : (virtualItems.map((vi) => {
                     const s = songs[vi.index];
                     return (_jsx("div", { "data-index": vi.index, ref: virtualizer.measureElement, style: {
                             position: "absolute",
@@ -116,6 +122,6 @@ export default function SongList() {
                             width: "100%",
                             paddingBottom: 10,
                             transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,
-                        }, children: _jsx(SongRow, { song: s, titleTargetChartId: titleTargets.get(s.id) ?? s.charts[0]?.id }) }, vi.key));
+                        }, children: _jsx(SongRow, { song: s, titleTargetChartId: titleTargets.get(s.id) ?? s.charts[0]?.id, priority: vi.index < 3 }) }, vi.key));
                 })) })] }));
 }

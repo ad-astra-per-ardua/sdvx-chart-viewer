@@ -200,6 +200,17 @@ button { font: inherit; cursor: pointer; }
 
 .song-list { display: flex; flex-direction: column; gap: 10px; }
 
+.skeleton-row {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s linear infinite;
+  border-radius: 12px;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .load-more-btn {
   display: block; width: 100%; padding: 14px;
   border-radius: 12px; border: 1px dashed rgba(255,255,255,0.12);

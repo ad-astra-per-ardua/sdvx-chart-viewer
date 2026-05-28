@@ -10,4 +10,19 @@ export default defineConfig({
       "/uploads": "http://localhost:8000",
     },
   },
+  build: {
+    target: "es2020",
+    cssCodeSplit: true,
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor":    ["react", "react-dom"],
+          "router-vendor":   ["react-router-dom"],
+          "virtual-vendor":  ["@tanstack/react-virtual"],
+          "analytics-vendor": ["@vercel/analytics/react", "@vercel/speed-insights/react"],
+        },
+      },
+    },
+  },
 });

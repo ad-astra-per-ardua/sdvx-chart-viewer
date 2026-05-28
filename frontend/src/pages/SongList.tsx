@@ -163,13 +163,26 @@ export default function SongList() {
         className="song-list"
         style={{
           position: "relative",
+          minHeight: loading ? `${ROW_ESTIMATE * 8}px` : undefined,
           height: songs.length === 0 ? undefined : `${virtualizer.getTotalSize()}px`,
           opacity: isPending ? 0.6 : undefined,
           transition: "opacity 0.15s",
         }}
       >
         {loading ? (
-          <div className="empty">불러오는 중…</div>
+          Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={`sk-${i}`}
+              className="song-row skeleton-row"
+              style={{
+                position: "absolute",
+                top: 0, left: 0, width: "100%",
+                transform: `translateY(${i * (ROW_ESTIMATE)}px)`,
+                height: ROW_ESTIMATE - 10,
+              }}
+              aria-hidden
+            />
+          ))
         ) : songs.length === 0 ? (
           <div className="empty">조건에 맞는 곡이 없어요. 필터를 풀어보세요.</div>
         ) : (
@@ -192,6 +205,7 @@ export default function SongList() {
                 <SongRow
                   song={s}
                   titleTargetChartId={titleTargets.get(s.id) ?? s.charts[0]?.id}
+                  priority={vi.index < 3}
                 />
               </div>
             );
