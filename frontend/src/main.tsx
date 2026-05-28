@@ -1,10 +1,11 @@
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { SpeedInsights } from '@vercel/speed-insights/react'
-import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from "@vercel/speed-insights/react";
+import { Analytics } from "@vercel/analytics/react";
 
 import SongList from "./pages/SongList";
+import "./styles/global.css";
 
 const SongDetail  = lazy(() => import("./pages/SongDetail"));
 const ChartDetail = lazy(() => import("./pages/ChartDetail"));
@@ -14,8 +15,6 @@ const AdminLayout   = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminSongList = lazy(() => import("./pages/admin/AdminSongList"));
 const AdminSongEdit = lazy(() => import("./pages/admin/AdminSongEdit"));
 const AdminTags     = lazy(() => import("./pages/admin/AdminTags"));
-
-import "./styles/global.css";
 
 const Fallback = () => <div className="detail-shell">불러오는 중…</div>;
 

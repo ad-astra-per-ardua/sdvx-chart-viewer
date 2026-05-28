@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { fetchChart } from "../api/client";
 const PARTS = [
@@ -50,14 +50,26 @@ export default function ChartDetail() {
         setActivePart("main");
         fetchChart(Number(id)).then(setData).catch(console.error);
     }, [id]);
+    const countsByPart = useMemo(() => {
+        const m = { intro: 0, outro: 0, main: 0, alt: 0 };
+        if (data)
+            for (const img of data.images)
+                m[img.part]++;
+        return m;
+    }, [data]);
+    const partImages = useMemo(() => (data ? data.images.filter((img) => img.part === activePart) : []), [data, activePart]);
     if (!data)
         return _jsx("div", { className: "detail-shell", children: "\uBD88\uB7EC\uC624\uB294 \uC911\u2026" });
-    const { song, difficulty, images, tags } = data;
+    const { song, difficulty, tags } = data;
     const jacketUrl = data.jacket_url || song.jacket_url;
-    const partImages = images.filter((img) => img.part === activePart);
-    return (_jsxs("div", { className: "detail-shell", children: [lightboxSrc && _jsx(Lightbox, { src: lightboxSrc, onClose: () => setLightboxSrc(null) }), _jsx("button", { onClick: () => nav("/"), className: "ghost", children: "\u2190 \uBAA9\uB85D\uC73C\uB85C" }), _jsxs("div", { className: "detail-top", children: [_jsx("img", { className: "jacket", src: jacketUrl || "/no-jacket.png", alt: "", width: 200, height: 200, loading: "eager", decoding: "sync", ...{ fetchpriority: "high" }, onError: (e) => { e.currentTarget.src = "/no-jacket.png"; } }), _jsxs("div", { children: [_jsx("h1", { children: song.title }), _jsx("div", { className: "artist", children: song.artist }), _jsx("div", { className: "badge-row", children: song.charts.map((c) => (_jsxs("div", { className: `badge ${c.difficulty} ${c.difficulty === difficulty ? "active" : ""}`, style: { color: `var(--diff-${c.difficulty})` }, onClick: () => nav(`/charts/${c.id}`), title: `${c.difficulty} ${c.level}`, children: [_jsx("span", { className: "lbl", children: c.difficulty }), _jsx("span", { className: "lv", children: c.level >= 18 || !Number.isInteger(c.level) ? c.level.toFixed(1) : c.level })] }, c.id))) })] })] }), _jsx("div", { className: "part-selector", children: PARTS.map(({ key, label }) => {
-                    const hasImages = images.some((img) => img.part === key);
-                    const count = images.filter((img) => img.part === key).length;
+    return (_jsxs("div", { className: "detail-shell", children: [lightboxSrc && _jsx(Lightbox, { src: lightboxSrc, onClose: () => setLightboxSrc(null) }), _jsx("button", { onClick: () => nav("/"), className: "ghost", children: "\u2190 \uBAA9\uB85D\uC73C\uB85C" }), _jsxs("div", { className: "detail-top", children: [_jsx("img", { className: "jacket", src: jacketUrl || "/no-jacket.png", alt: "", width: 200, height: 200, loading: "eager", decoding: "sync", ...{ fetchpriority: "high" }, onError: (e) => {
+                            const img = e.currentTarget;
+                            if (img.src.endsWith("/no-jacket.png"))
+                                return;
+                            img.src = "/no-jacket.png";
+                        } }), _jsxs("div", { children: [_jsx("h1", { children: song.title }), _jsx("div", { className: "artist", children: song.artist }), _jsx("div", { className: "badge-row", children: song.charts.map((c) => (_jsxs("div", { className: `badge ${c.difficulty} ${c.difficulty === difficulty ? "active" : ""}`, style: { color: `var(--diff-${c.difficulty})` }, onClick: () => nav(`/charts/${c.id}`), title: `${c.difficulty} ${c.level}`, children: [_jsx("span", { className: "lbl", children: c.difficulty }), _jsx("span", { className: "lv", children: c.level >= 18 || !Number.isInteger(c.level) ? c.level.toFixed(1) : c.level })] }, c.id))) })] })] }), _jsx("div", { className: "part-selector", children: PARTS.map(({ key, label }) => {
+                    const count = countsByPart[key];
+                    const hasImages = count > 0;
                     return (_jsxs("button", { className: `part-btn ${activePart === key ? "active" : ""} ${!hasImages ? "empty" : ""}`, onClick: () => setActivePart(key), disabled: !hasImages, children: [label, hasImages && _jsx("span", { className: "part-count", children: count })] }, key));
                 }) }), _jsx("div", { className: "image-strip", children: partImages.length === 0
                     ? _jsx("div", { className: "empty", children: "\uC774 \uD30C\uD2B8\uC5D0 \uB4F1\uB85D\uB41C \uC774\uBBF8\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })

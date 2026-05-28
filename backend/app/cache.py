@@ -1,19 +1,34 @@
 import time
+from collections import OrderedDict
+from threading import Lock
 
-_store: dict = {}
 TTL = 300.0
+MAX_ENTRIES = 256
+
+_store: "OrderedDict[tuple, tuple]" = OrderedDict()
+_lock = Lock()
 
 
 def get(key: tuple):
-    entry = _store.get(key)
-    if entry and time.monotonic() - entry[2] < TTL:
+    with _lock:
+        entry = _store.get(key)
+        if not entry:
+            return None
+        if time.monotonic() - entry[2] >= TTL:
+            _store.pop(key, None)
+            return None
+        _store.move_to_end(key)
         return entry[0], entry[1]
-    return None
 
 
 def set(key: tuple, body: bytes, total: str) -> None:
-    _store[key] = (body, total, time.monotonic())
+    with _lock:
+        _store[key] = (body, total, time.monotonic())
+        _store.move_to_end(key)
+        while len(_store) > MAX_ENTRIES:
+            _store.popitem(last=False)
 
 
 def invalidate() -> None:
-    _store.clear()
+    with _lock:
+        _store.clear()

@@ -23,8 +23,9 @@ function loadPicks() {
 }
 export default function Megamix() {
     const nav = useNavigate();
-    const [self, setSelf] = useState(() => loadPicks().self);
-    const [opp, setOpp] = useState(() => loadPicks().opp);
+    const initialPicks = useRef(loadPicks());
+    const [self, setSelf] = useState(initialPicks.current.self);
+    const [opp, setOpp] = useState(initialPicks.current.opp);
     const [picker, setPicker] = useState(null);
     const [searchQ, setSearchQ] = useState("");
     const [results, setResults] = useState([]);
@@ -127,7 +128,12 @@ export default function Megamix() {
         const isDragging = dragFrom?.side === side && dragFrom?.idx === idx;
         const isOver = dragOverIdx?.side === side && dragOverIdx?.idx === idx && !isDragging;
         const sidePicks = side === "self" ? self : opp;
-        return (_jsxs("div", { className: `megamix-slot${isDragging ? " dragging" : ""}${isOver ? " drag-over" : ""}`, draggable: true, onDragStart: (e) => onDragStart(e, side, idx), onDragOver: (e) => onDragOver(e, side, idx), onDrop: (e) => onDrop(e, side, idx), onDragEnd: onDragEnd, children: [_jsx("div", { className: "drag-handle", children: "\u283F" }), _jsx("div", { className: "slot-number", children: idx + 1 }), _jsxs("div", { className: "slot-body", children: [song ? (_jsxs("div", { className: "slot-song", children: [_jsx("img", { className: "slot-jacket", src: song.jacket_url || "/no-jacket.png", alt: "", width: 95, height: 95, loading: "lazy", decoding: "async", onError: (e) => { e.currentTarget.src = "/no-jacket.png"; } }), _jsxs("div", { className: "slot-info", children: [_jsx("div", { className: "slot-title", children: song.title }), _jsx("div", { className: "slot-artist", children: song.artist }), _jsx("div", { className: "slot-charts", children: ALL_DIFFS.map((d) => {
+        return (_jsxs("div", { className: `megamix-slot${isDragging ? " dragging" : ""}${isOver ? " drag-over" : ""}`, draggable: true, onDragStart: (e) => onDragStart(e, side, idx), onDragOver: (e) => onDragOver(e, side, idx), onDrop: (e) => onDrop(e, side, idx), onDragEnd: onDragEnd, children: [_jsx("div", { className: "drag-handle", children: "\u283F" }), _jsx("div", { className: "slot-number", children: idx + 1 }), _jsxs("div", { className: "slot-body", children: [song ? (_jsxs("div", { className: "slot-song", children: [_jsx("img", { className: "slot-jacket", src: song.jacket_url || "/no-jacket.png", alt: "", width: 95, height: 95, loading: "lazy", decoding: "async", onError: (e) => {
+                                        const t = e.currentTarget;
+                                        if (t.src.endsWith("/no-jacket.png"))
+                                            return;
+                                        t.src = "/no-jacket.png";
+                                    } }), _jsxs("div", { className: "slot-info", children: [_jsx("div", { className: "slot-title", children: song.title }), _jsx("div", { className: "slot-artist", children: song.artist }), _jsx("div", { className: "slot-charts", children: ALL_DIFFS.map((d) => {
                                                 const c = song.charts.find((x) => x.difficulty === d);
                                                 if (!c)
                                                     return null;
@@ -138,7 +144,12 @@ export default function Megamix() {
                                             _jsx("div", { className: "picker-state", children: "\uACB0\uACFC \uC5C6\uC74C" }), !searching && !searchQ &&
                                             _jsx("div", { className: "picker-state", children: "\uAC80\uC0C9\uC5B4\uB97C \uC785\uB825\uD558\uC138\uC694" }), results.map((s) => {
                                             const taken = sidePicks.some((p) => p?.id === s.id);
-                                            return (_jsxs("div", { className: `picker-item${taken ? " taken" : ""}`, onMouseDown: !taken ? (e) => e.preventDefault() : undefined, onClick: !taken ? () => pickSong(s) : undefined, children: [_jsx("img", { className: "picker-jacket", src: s.jacket_url || "/no-jacket.png", alt: "", width: 36, height: 36, loading: "lazy", decoding: "async", onError: (e) => { e.currentTarget.src = "/no-jacket.png"; } }), _jsxs("div", { className: "picker-meta", children: [_jsx("div", { className: "picker-title", children: s.title }), _jsx("div", { className: "picker-artist", children: s.artist })] }), taken && _jsx("span", { className: "picker-taken-badge", children: "\uC120\uD0DD\uB428" })] }, s.id));
+                                            return (_jsxs("div", { className: `picker-item${taken ? " taken" : ""}`, onMouseDown: !taken ? (e) => e.preventDefault() : undefined, onClick: !taken ? () => pickSong(s) : undefined, children: [_jsx("img", { className: "picker-jacket", src: s.jacket_url || "/no-jacket.png", alt: "", width: 36, height: 36, loading: "lazy", decoding: "async", onError: (e) => {
+                                                            const t = e.currentTarget;
+                                                            if (t.src.endsWith("/no-jacket.png"))
+                                                                return;
+                                                            t.src = "/no-jacket.png";
+                                                        } }), _jsxs("div", { className: "picker-meta", children: [_jsx("div", { className: "picker-title", children: s.title }), _jsx("div", { className: "picker-artist", children: s.artist })] }), taken && _jsx("span", { className: "picker-taken-badge", children: "\uC120\uD0DD\uB428" })] }, s.id));
                                         })] })] }))] })] }, idx));
     };
     return (_jsxs("div", { className: "megamix-shell", children: [_jsxs("div", { className: "megamix-header", children: [_jsx("button", { onClick: () => nav("/"), className: "secondary", children: "\u2190 \uACE1 \uBAA9\uB85D" }), _jsx("h1", { className: "megamix-title", children: "\uBA54\uAC00\uBBF9\uC2A4 \uC120\uACE1 \uB9AC\uC2A4\uD2B8" }), _jsx("button", { className: "secondary", onClick: () => {

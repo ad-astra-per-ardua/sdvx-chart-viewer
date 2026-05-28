@@ -11,36 +11,36 @@ function toParams(q) {
         p.set("limit", String(q.limit));
     return p.toString();
 }
-export async function fetchMeta() {
-    const r = await fetch(`${API_BASE}/api/meta`);
+export async function fetchMeta(signal) {
+    const r = await fetch(`${API_BASE}/api/meta`, { signal });
     if (!r.ok)
         throw new Error(`meta ${r.status}`);
     return r.json();
 }
-export async function fetchSongs(q) {
-    const r = await fetch(`${API_BASE}/api/songs?${toParams(q)}`);
+export async function fetchSongs(q, signal) {
+    const r = await fetch(`${API_BASE}/api/songs?${toParams(q)}`, { signal });
     if (!r.ok)
         throw new Error(`songs ${r.status}`);
     const songs = await r.json();
     const total = parseInt(r.headers.get("X-Total-Count") ?? String(songs.length), 10);
     return { songs, total };
 }
-export async function fetchSong(id) {
+export async function fetchSong(id, signal) {
     const cached = _songCache.get(id);
     if (cached)
         return cached;
-    const r = await fetch(`${API_BASE}/api/songs/${id}`);
+    const r = await fetch(`${API_BASE}/api/songs/${id}`, { signal });
     if (!r.ok)
         throw new Error(`song ${r.status}`);
     const data = await r.json();
     _songCache.set(id, data);
     return data;
 }
-export async function fetchChart(id) {
+export async function fetchChart(id, signal) {
     const cached = _chartCache.get(id);
     if (cached)
         return cached;
-    const r = await fetch(`${API_BASE}/api/charts/${id}`);
+    const r = await fetch(`${API_BASE}/api/charts/${id}`, { signal });
     if (!r.ok)
         throw new Error(`chart ${r.status}`);
     const data = await r.json();

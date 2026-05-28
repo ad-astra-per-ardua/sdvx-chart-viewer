@@ -16,11 +16,16 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "react-vendor":    ["react", "react-dom"],
-          "router-vendor":   ["react-router-dom"],
-          "virtual-vendor":  ["@tanstack/react-virtual"],
-          "analytics-vendor": ["@vercel/analytics/react", "@vercel/speed-insights/react"],
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("react-router")) return "router";
+          if (id.includes("@tanstack")) return "virtual";
+          if (id.includes("@vercel")) return "analytics";
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/")
+          ) return "react";
         },
       },
     },

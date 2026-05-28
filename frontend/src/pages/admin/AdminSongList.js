@@ -12,7 +12,12 @@ const AdminSongRow = memo(function AdminSongRow({ song, onDelete }) {
     // rather than on every parent render.
     const tags = useMemo(() => [...new Map(song.charts.flatMap((c) => c.tags).map((t) => [t.id, t])).values()], [song]);
     const handleDelete = useCallback(() => onDelete(song), [onDelete, song]);
-    return (_jsxs("div", { className: "admin-grid-row", children: [_jsx("div", { children: _jsx("img", { src: song.jacket_url || "/no-jacket.png", alt: "", className: "thumb", loading: "lazy", decoding: "async", onError: (e) => { e.currentTarget.src = "/no-jacket.png"; } }) }), _jsxs("div", { children: [_jsx("div", { className: "t-title", children: song.title }), _jsx("div", { className: "t-artist", children: song.artist })] }), _jsx("div", { children: _jsxs("div", { className: "diff-row", children: [song.charts.map((c) => (_jsxs("span", { className: `pill ${c.difficulty}`, children: [c.difficulty, " ", c.level >= 18 || !Number.isInteger(c.level) ? c.level.toFixed(1) : c.level] }, c.id))), song.charts.length === 0 && _jsx("span", { className: "muted", children: "\u2014" })] }) }), _jsx("div", { children: tags.length > 0
+    return (_jsxs("div", { className: "admin-grid-row", children: [_jsx("div", { children: _jsx("img", { src: song.jacket_url || "/no-jacket.png", alt: "", className: "thumb", width: 48, height: 48, loading: "lazy", decoding: "async", onError: (e) => {
+                        const t = e.currentTarget;
+                        if (t.src.endsWith("/no-jacket.png"))
+                            return;
+                        t.src = "/no-jacket.png";
+                    } }) }), _jsxs("div", { children: [_jsx("div", { className: "t-title", children: song.title }), _jsx("div", { className: "t-artist", children: song.artist })] }), _jsx("div", { children: _jsxs("div", { className: "diff-row", children: [song.charts.map((c) => (_jsxs("span", { className: `pill ${c.difficulty}`, children: [c.difficulty, " ", c.level >= 18 || !Number.isInteger(c.level) ? c.level.toFixed(1) : c.level] }, c.id))), song.charts.length === 0 && _jsx("span", { className: "muted", children: "\u2014" })] }) }), _jsx("div", { children: tags.length > 0
                     ? tags.map((t) => _jsxs("span", { className: "tag-mini", children: ["#", t.name] }, t.id))
                     : _jsx("span", { className: "muted", children: "\u2014" }) }), _jsxs("div", { children: [_jsx(Link, { to: `/admin/songs/${song.id}`, className: "btn ghost", children: "\uD3B8\uC9D1" }), _jsx("button", { className: "btn danger", onClick: handleDelete, children: "\uC0AD\uC81C" })] })] }));
 });

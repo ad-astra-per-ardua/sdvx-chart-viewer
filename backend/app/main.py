@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
@@ -22,47 +23,86 @@ Base.metadata.create_all(bind=engine)
 
 logger = logging.getLogger("sdvx.security")
 
-for _stmt in [
-    "ALTER TABLE songs ADD COLUMN keywords TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE songs DROP COLUMN jacket_url",
-    "DROP INDEX IF EXISTS idx_songs_title",
-    "DROP INDEX IF EXISTS idx_songs_artist",
-    "DROP INDEX IF EXISTS idx_charts_level",
-    "DROP INDEX IF EXISTS idx_charts_diff_level",
-    "DROP INDEX IF EXISTS idx_chart_tag_tag_id",
-    "DROP INDEX IF EXISTS idx_chart_images_chart_part",
-]:
-    try:
-        with engine.connect() as _conn:
-            _conn.execute(sql_text(_stmt))
-            _conn.commit()
-    except Exception as _e:
-        _msg = str(_e).lower()
-        if "already exists" not in _msg and "duplicate" not in _msg and "no such column" not in _msg:
-            logger.warning("Migration warning: %s", _e)
 
-app = FastAPI(title="SDVX Megamix Chart Viewer API")
+def _run_inline_migrations() -> None:
+    for stmt in (
+        "ALTER TABLE songs ADD COLUMN keywords TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE songs DROP COLUMN jacket_url",
+        "DROP INDEX IF EXISTS idx_songs_title",
+        "DROP INDEX IF EXISTS idx_songs_artist",
+        "DROP INDEX IF EXISTS idx_charts_level",
+        "DROP INDEX IF EXISTS idx_charts_diff_level",
+        "DROP INDEX IF EXISTS idx_chart_tag_tag_id",
+        "DROP INDEX IF EXISTS idx_chart_images_chart_part",
+    ):
+        try:
+            with engine.connect() as conn:
+                conn.execute(sql_text(stmt))
+                conn.commit()
+        except Exception as e:
+            msg = str(e).lower()
+            if "already exists" not in msg and "duplicate" not in msg and "no such column" not in msg:
+                logger.warning("Migration warning [%s]: %s", stmt[:40], e)
+
+
+_run_inline_migrations()
+
+app = FastAPI(title="SDVX Megamix Chart Viewer API", docs_url=None, redoc_url=None, openapi_url=None)
 app.state.limiter = limiter
+
+_ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
+    "ALLOWED_ORIGINS", "https://megamix-info.vercel.app,http://localhost:5173"
+).split(",") if o.strip()]
+
+_ALLOWED_ORIGIN_SET = frozenset(_ALLOWED_ORIGINS)
+
+_ALLOWED_HOSTS = [h.strip() for h in os.getenv(
+    "ALLOWED_HOSTS",
+    "sdvx-chart-viewer-production.up.railway.app,megamix-info.vercel.app,localhost,127.0.0.1,testserver",
+).split(",") if h.strip()]
+
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     ip = request.client.host if request.client else "unknown"
     logger.warning("RATE_LIMIT  ip=%s  %s %s", ip, request.method, request.url.path)
     return _rate_limit_exceeded_handler(request, exc)
-app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=5)
 
-_ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
-    "ALLOWED_ORIGINS", "https://megamix-info.vercel.app,http://localhost:5173"
-).split(",") if o.strip()]
+
+app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=5)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
     expose_headers=["X-Total-Count"],
+    max_age=600,
 )
+
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
+
+
+_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+@app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    if request.method in _MUTATING_METHODS and request.url.path.startswith("/api/admin"):
+        origin = request.headers.get("origin")
+        if not origin:
+            # Fall back to Referer for clients that strip Origin (rare browsers).
+            referer = request.headers.get("referer", "")
+            if not referer or not any(referer.startswith(o + "/") or referer == o for o in _ALLOWED_ORIGIN_SET):
+                ip = request.client.host if request.client else "unknown"
+                logger.warning("CSRF_BLOCK  ip=%s  path=%s  origin=missing", ip, request.url.path)
+                return JSONResponse({"detail": "origin required"}, status_code=403)
+        elif origin not in _ALLOWED_ORIGIN_SET:
+            ip = request.client.host if request.client else "unknown"
+            logger.warning("CSRF_BLOCK  ip=%s  path=%s  origin=%s", ip, request.url.path, origin)
+            return JSONResponse({"detail": "origin not allowed"}, status_code=403)
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -71,10 +111,14 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if not request.url.path.startswith("/uploads"):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data: https:; "
-            "script-src 'self'; style-src 'self' 'unsafe-inline'"
+            "script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
         )
     return response
 
@@ -82,6 +126,10 @@ Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(admin_router)
 
+
+def _escape_like(s: str) -> str:
+    # Escape LIKE metacharacters so user input is treated literally.
+    return s.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
 @app.get("/api/meta", response_model=schemas.FilterMeta)
@@ -100,10 +148,11 @@ def list_songs(
         response: Response,
         db: Session = Depends(get_db),
         sort: str = Query("new", regex="^(new|level_asc|level_desc)$"),
-        q: Optional[str] = Query(None),
+        q: Optional[str] = Query(None, max_length=200),
         limit: Optional[int] = Query(None, ge=1, le=500),
 ):
-    cache_key = (sort, q or "", limit or 0)
+    q_norm = (q or "").strip()
+    cache_key = (sort, q_norm, limit or 0)
     entry = song_cache.get(cache_key)
     if entry:
         response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
@@ -113,12 +162,15 @@ def list_songs(
     response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
     conds = ["c.level >= 1"]
     params: dict = {}
-    if q:
-        conds.append("(s.title ILIKE :q OR s.artist ILIKE :q OR s.keywords ILIKE :q)")
-        params["q"] = f"%{q}%"
+    if q_norm:
+        conds.append(
+            "(s.title ILIKE :q ESCAPE '\\' OR s.artist ILIKE :q ESCAPE '\\' "
+            "OR s.keywords ILIKE :q ESCAPE '\\')"
+        )
+        params["q"] = f"%{_escape_like(q_norm)}%"
 
     sql = sql_text(
-        "SELECT s.id, s.title, s.artist, s.keywords, s.created_at,"
+        "SELECT s.id, s.title, s.artist, s.created_at,"
         "       c.id AS chart_id, c.difficulty, c.level, c.jacket_url AS chart_jacket"
         " FROM songs s"
         " JOIN charts c ON c.song_id = s.id"
@@ -136,32 +188,32 @@ def list_songs(
     rows = db.execute(sql, params).fetchall()
 
     if not rows:
+        song_cache.set(cache_key, b"[]", "0")
         response.headers["X-Total-Count"] = "0"
         return Response(content=b"[]", media_type="application/json")
 
     songs_map: dict = {}
     for row in rows:
         sid = row[0]
-        lv = row[7]
+        lv = row[6]
         s = songs_map.get(sid)
         if s is None:
             s = songs_map[sid] = {
                 "id": sid,
                 "title": row[1],
                 "artist": row[2],
-                "keywords": row[3] or "",
-                "created_at": row[4],
+                "created_at": row[3],
                 "_max": lv,
                 "charts": [],
             }
         elif lv > s["_max"]:
             s["_max"] = lv
         s["charts"].append({
-            "id": row[5],
-            "difficulty": row[6],
+            "id": row[4],
+            "difficulty": row[5],
             "level": lv,
-            "jacket_url": row[8],
-            "tags": tags_by_chart.get(row[5], []),
+            "jacket_url": row[7],
+            "tags": tags_by_chart.get(row[4], []),
         })
 
     songs_list = list(songs_map.values())
@@ -228,7 +280,6 @@ def get_song(request: Request, song_id: int, response: Response, db: Session = D
 def get_chart(request: Request, chart_id: int, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
 
-    # Query 1: chart + song (1 round trip)
     base = db.execute(sql_text(
         "SELECT c.id, c.difficulty, c.level, c.jacket_url,"
         " s.id, s.title, s.artist, s.created_at"
@@ -238,7 +289,6 @@ def get_chart(request: Request, chart_id: int, response: Response, db: Session =
         raise HTTPException(404, "Chart not found")
     song_id = base[4]
 
-    # Query 2: all sibling charts with tags (1 round trip, LEFT JOIN)
     sibling_rows = db.execute(sql_text(
         "SELECT c.id, c.difficulty, c.level, c.jacket_url, t.id, t.name"
         " FROM charts c"
@@ -256,7 +306,6 @@ def get_chart(request: Request, chart_id: int, response: Response, db: Session =
             charts_map[cid]["tags"].append({"id": r[4], "name": r[5]})
     all_charts = list(charts_map.values())
 
-    # Query 3: images for this chart (1 round trip)
     image_rows = db.execute(sql_text(
         "SELECT id, image_url, order_idx, part FROM chart_images"
         " WHERE chart_id = :cid ORDER BY order_idx"

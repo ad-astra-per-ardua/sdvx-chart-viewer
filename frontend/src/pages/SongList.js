@@ -6,7 +6,6 @@ import FilterSidebar from "../components/FilterSidebar";
 import LevelQuickBar from "../components/LevelQuickBar";
 import SongRow from "../components/SongRow";
 import { fetchMeta, fetchSongs } from "../api/client";
-import { buildSearchIndex, normalize } from "../utils/search";
 const DEFAULT_QUERY = {
     level_min: 1,
     level_max: 20.9,
@@ -18,18 +17,14 @@ const DEFAULT_QUERY = {
 };
 const ROW_ESTIMATE = 94;
 const ROW_OVERSCAN = 8;
-function applyFilter(all, query, searchIndex) {
-    const { level_min, level_max, difficulties, tags, quick_level, sort, q } = query;
+function applyFilter(all, query) {
+    const { level_min, level_max, difficulties, tags, quick_level, sort } = query;
     const diffSet = new Set(difficulties);
-    const lq = q ? normalize(q) : "";
     const hasDiff = diffSet.size > 0;
     const hasTag = tags.length > 0;
-    const hasText = lq.length > 0;
     const hasLevel = quick_level !== undefined || level_min !== 1 || level_max !== 20.9;
     const out = [];
     for (let i = 0; i < all.length; i++) {
-        if (hasText && !searchIndex[i].includes(lq))
-            continue;
         const song = all[i];
         let charts = song.charts;
         if (hasDiff)
@@ -60,29 +55,46 @@ export default function SongList() {
     const [query, setQuery] = useState(DEFAULT_QUERY);
     const [allSongs, setAllSongs] = useState([]);
     const [loading, setLoading] = useState(true);
-    useEffect(() => { fetchMeta().then(setMeta).catch(console.error); }, []);
     useEffect(() => {
-        let cancelled = false;
-        fetchSongs({})
-            .then(({ songs }) => {
-            if (!cancelled)
-                startTransition(() => setAllSongs(songs));
-        })
-            .catch(console.error)
-            .finally(() => { if (!cancelled)
-            setLoading(false); });
-        return () => { cancelled = true; };
+        const ctrl = new AbortController();
+        fetchMeta(ctrl.signal).then(setMeta).catch((e) => {
+            if (e?.name !== "AbortError")
+                console.error(e);
+        });
+        return () => ctrl.abort();
     }, []);
-    const searchIndex = useMemo(() => buildSearchIndex(allSongs, (s) => `${s.title} ${s.artist} ${s.keywords ?? ""}`), [allSongs]);
+    useEffect(() => {
+        const ctrl = new AbortController();
+        fetchSongs({ q: query.q || undefined }, ctrl.signal)
+            .then(({ songs }) => {
+            startTransition(() => setAllSongs(songs));
+        })
+            .catch((e) => {
+            if (e?.name !== "AbortError")
+                console.error(e);
+        })
+            .finally(() => {
+            if (!ctrl.signal.aborted)
+                setLoading(false);
+        });
+        return () => ctrl.abort();
+    }, [query.q]);
     const deferredQuery = useDeferredValue(query);
     const isPending = query !== deferredQuery;
-    const songs = useMemo(() => applyFilter(allSongs, deferredQuery, searchIndex), [allSongs, deferredQuery, searchIndex]);
+    const songs = useMemo(() => applyFilter(allSongs, deferredQuery), [allSongs, deferredQuery]);
     const titleTargets = useMemo(() => {
         const map = new Map();
         for (const s of songs) {
-            const top = s.charts.reduce((best, c) => (!best || c.level > best.level ? c : best), null);
-            if (top)
-                map.set(s.id, top.id);
+            let topId = s.charts[0]?.id;
+            let topLevel = s.charts[0]?.level ?? -1;
+            for (let i = 1; i < s.charts.length; i++) {
+                if (s.charts[i].level > topLevel) {
+                    topLevel = s.charts[i].level;
+                    topId = s.charts[i].id;
+                }
+            }
+            if (topId !== undefined)
+                map.set(s.id, topId);
         }
         return map;
     }, [songs]);

@@ -13,41 +13,41 @@ function toParams(q: Partial<SongQuery>): string {
   return p.toString();
 }
 
-export async function fetchMeta(): Promise<FilterMeta> {
-  const r = await fetch(`${API_BASE}/api/meta`);
+export async function fetchMeta(signal?: AbortSignal): Promise<FilterMeta> {
+  const r = await fetch(`${API_BASE}/api/meta`, { signal });
   if (!r.ok) throw new Error(`meta ${r.status}`);
   return r.json();
 }
 
 export async function fetchSongs(
   q: Partial<SongQuery>,
+  signal?: AbortSignal,
 ): Promise<{ songs: Song[]; total: number }> {
-  const r = await fetch(`${API_BASE}/api/songs?${toParams(q)}`);
+  const r = await fetch(`${API_BASE}/api/songs?${toParams(q)}`, { signal });
   if (!r.ok) throw new Error(`songs ${r.status}`);
   const songs: Song[] = await r.json();
   const total = parseInt(r.headers.get("X-Total-Count") ?? String(songs.length), 10);
   return { songs, total };
 }
 
-export async function fetchSong(id: number): Promise<Song> {
+export async function fetchSong(id: number, signal?: AbortSignal): Promise<Song> {
   const cached = _songCache.get(id);
   if (cached) return cached;
-  const r = await fetch(`${API_BASE}/api/songs/${id}`);
+  const r = await fetch(`${API_BASE}/api/songs/${id}`, { signal });
   if (!r.ok) throw new Error(`song ${r.status}`);
   const data: Song = await r.json();
   _songCache.set(id, data);
   return data;
 }
 
-export async function fetchChart(id: number): Promise<ChartDetailDto> {
+export async function fetchChart(id: number, signal?: AbortSignal): Promise<ChartDetailDto> {
   const cached = _chartCache.get(id);
   if (cached) return cached;
-  const r = await fetch(`${API_BASE}/api/charts/${id}`);
+  const r = await fetch(`${API_BASE}/api/charts/${id}`, { signal });
   if (!r.ok) throw new Error(`chart ${r.status}`);
   const data: ChartDetailDto = await r.json();
   _chartCache.set(id, data);
   return data;
-
 }
 
 export function invalidateChartCache(id?: number) {

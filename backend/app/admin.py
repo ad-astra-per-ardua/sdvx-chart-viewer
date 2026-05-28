@@ -26,8 +26,33 @@ UPLOAD_DIR = Path("data/uploads")
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
-_SUPABASE_URL = "https://rajqellsaolsgjtfhdnm.supabase.co"
-_SUPABASE_BUCKET = "uploads"
+_EXT_TO_MIME = {
+    ".png":  "image/png",
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif":  "image/gif",
+}
+
+_MAGIC_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n",                 "image/png"),
+    (b"\xff\xd8\xff",                       "image/jpeg"),
+    (b"GIF87a",                              "image/gif"),
+    (b"GIF89a",                              "image/gif"),
+)
+
+
+def _detect_image_mime(data: bytes) -> str | None:
+    for sig, mime in _MAGIC_SIGNATURES:
+        if data.startswith(sig):
+            return mime
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+_SUPABASE_URL = os.getenv("SUPABASE_URL", "https://rajqellsaolsgjtfhdnm.supabase.co").rstrip("/")
+_SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "uploads")
 
 
 def _storage_headers() -> dict | None:
@@ -66,8 +91,26 @@ def _admin_token() -> str:
     return token
 
 
-def _cookie_is_secure() -> bool:
-    return os.getenv("PUBLIC_BASE_URL", "").startswith("https://")
+def _is_secure_request(request: Request) -> bool:
+    if request.url.scheme == "https":
+        return True
+    proto = request.headers.get("x-forwarded-proto", "")
+    return proto.split(",")[0].strip().lower() == "https"
+
+
+def _cookie_kwargs(request: Request, *, with_max_age: bool) -> dict:
+    secure = _is_secure_request(request) or os.getenv("PUBLIC_BASE_URL", "").startswith("https://")
+    kwargs = dict(
+        key=COOKIE_NAME,
+        httponly=True,
+        secure=secure,
+        # Same-origin via vercel rewrite → "lax" blocks third-party CSRF while preserving normal nav.
+        samesite="lax",
+        path="/api/admin",
+    )
+    if with_max_age:
+        kwargs["max_age"] = 86400 * 7
+    return kwargs
 
 
 def require_admin(request: Request) -> None:
@@ -84,30 +127,20 @@ def require_admin(request: Request) -> None:
 @limiter.limit("5/minute")
 def login(request: Request, response: Response, payload: dict):
     token = (payload or {}).get("token", "")
-    if not secrets.compare_digest(token, _admin_token()):
+    expected = _admin_token()
+    # Always do compare_digest to keep timing constant even when input is the wrong type / length.
+    ok = isinstance(token, str) and secrets.compare_digest(token, expected)
+    if not ok:
+        ip = request.client.host if request.client else "unknown"
+        audit_logger.warning("ADMIN_LOGIN_FAIL  ip=%s", ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid admin token")
-    secure = _cookie_is_secure()
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        secure=secure,
-        samesite="none" if secure else "lax",
-        path="/api/admin",
-        max_age=86400 * 7,
-    )
+    response.set_cookie(value=token, **_cookie_kwargs(request, with_max_age=True))
     return {"ok": True}
 
 
 @router.post("/logout", status_code=204)
-def logout(response: Response):
-    secure = _cookie_is_secure()
-    response.delete_cookie(
-        key=COOKIE_NAME,
-        path="/api/admin",
-        samesite="none" if secure else "lax",
-        secure=secure,
-    )
+def logout(request: Request, response: Response):
+    response.delete_cookie(**_cookie_kwargs(request, with_max_age=False))
 
 
 @router.get("/session")
@@ -129,15 +162,25 @@ def upload(request: Request, file: UploadFile = File(...)):
     data = file.file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "file too large (max 8MB)")
+    if not data:
+        raise HTTPException(400, "empty file")
+
+    declared_mime = _EXT_TO_MIME[ext]
+    actual_mime = _detect_image_mime(data)
+    if actual_mime is None or actual_mime != declared_mime:
+        raise HTTPException(400, "file content does not match extension")
+
+    headers = _storage_headers()
+    if not headers:
+        raise HTTPException(500, "storage credentials not configured")
 
     safe = _SAFE_NAME.sub("_", Path(file.filename or "f").stem)[:60] or "file"
     final = f"{secrets.token_urlsafe(8)}_{safe}{ext}"
-    content_type = file.content_type or "application/octet-stream"
 
     resp = httpx.post(
         f"{_SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{final}",
         content=data,
-        headers={**_storage_headers(), "Content-Type": content_type},
+        headers={**headers, "Content-Type": actual_mime},
         timeout=30,
     )
     if resp.status_code not in (200, 201):

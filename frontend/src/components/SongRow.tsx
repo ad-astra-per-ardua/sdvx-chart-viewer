@@ -1,9 +1,11 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Difficulty, Song } from "../types";
 
 const ALL_DIFFS: Difficulty[] =
   ["NOV", "ADV", "EXH", "MXM", "INF", "GRV", "HVN", "VVD", "XCD", "ULT", "NBL"];
+
+const FALLBACK = "/no-jacket.png";
 
 interface Props {
   song: Song;
@@ -13,22 +15,29 @@ interface Props {
 
 export default memo(function SongRow({ song, titleTargetChartId, priority }: Props) {
   const nav = useNavigate();
-  const byDiff = new Map(song.charts.map((c) => [c.difficulty, c]));
+  const byDiff = useMemo(
+    () => new Map(song.charts.map((c) => [c.difficulty, c])),
+    [song.charts],
+  );
 
-  const jacketUrl = song.jacket_url || song.charts.find((c) => c.jacket_url)?.jacket_url;
+  const jacketUrl = song.jacket_url || song.charts.find((c) => c.jacket_url)?.jacket_url || FALLBACK;
 
   return (
     <div className="song-row">
       <img
         className="jacket"
-        src={jacketUrl || "/no-jacket.png"}
+        src={jacketUrl}
         alt=""
         width={64}
         height={64}
         loading={priority ? "eager" : "lazy"}
         decoding={priority ? "sync" : "async"}
         {...(priority ? { fetchpriority: "high" as any } : {})}
-        onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/no-jacket.png"; }}
+        onError={(e) => {
+          const img = e.currentTarget as HTMLImageElement;
+          if (img.src.endsWith(FALLBACK)) return;
+          img.src = FALLBACK;
+        }}
       />
 
       <div className="meta">

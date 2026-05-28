@@ -67,12 +67,16 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, [query.q]);
 
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
   const onSearchChange = (val: string) => {
     setLocalSearch(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setQuery({ ...query, q: val });
-    }, 120);
+    }, 200);
   };
 
   const onLevelMin = (v: number) =>
@@ -108,6 +112,7 @@ export default function FilterSidebar({ meta, query, setQuery }: Props) {
       <div className="section-label">검색</div>
       <input
         className="search-input sidebar-search"
+        type="search"
         placeholder="제목 / 아티스트 / 키워드"
         value={localSearch}
         onChange={(e) => onSearchChange(e.target.value)}

@@ -67,7 +67,7 @@ class ChartImageCreate(BaseModel):
 
 
 class TagCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=32)
+    name: str = Field(..., min_length=1, max_length=32, pattern=r"^[A-Za-z0-9 \-_]+$")
 
 
 class UploadResponse(BaseModel):

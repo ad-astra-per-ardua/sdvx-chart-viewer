@@ -28,13 +28,14 @@ export interface Song {
   id: number;
   title: string;
   artist: string;
-  keywords: string;
   jacket_url: string;
   created_at: string;
   charts: Chart[];
 }
 
-export interface SongAdmin extends Song {}
+export interface SongAdmin extends Song {
+  keywords: string;
+}
 
 export interface ChartDetailDto {
   id: number;

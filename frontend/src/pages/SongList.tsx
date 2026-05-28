@@ -7,7 +7,6 @@ import FilterSidebar from "../components/FilterSidebar";
 import LevelQuickBar from "../components/LevelQuickBar";
 import SongRow from "../components/SongRow";
 import { fetchMeta, fetchSongs } from "../api/client";
-import { buildSearchIndex, normalize } from "../utils/search";
 import type { FilterMeta, Song, SongQuery } from "../types";
 
 const DEFAULT_QUERY: SongQuery = {
@@ -23,23 +22,19 @@ const DEFAULT_QUERY: SongQuery = {
 const ROW_ESTIMATE = 94;
 const ROW_OVERSCAN = 8;
 
-function applyFilter(all: Song[], query: SongQuery, searchIndex: string[]): Song[] {
-  const { level_min, level_max, difficulties, tags, quick_level, sort, q } = query;
-  const diffSet      = new Set(difficulties);
-  const lq           = q ? normalize(q) : "";
-  const hasDiff      = diffSet.size > 0;
-  const hasTag       = tags.length > 0;
-  const hasText      = lq.length > 0;
-  const hasLevel     = quick_level !== undefined || level_min !== 1 || level_max !== 20.9;
+function applyFilter(all: Song[], query: SongQuery): Song[] {
+  const { level_min, level_max, difficulties, tags, quick_level, sort } = query;
+  const diffSet  = new Set(difficulties);
+  const hasDiff  = diffSet.size > 0;
+  const hasTag   = tags.length > 0;
+  const hasLevel = quick_level !== undefined || level_min !== 1 || level_max !== 20.9;
   const out: Array<{ song: Song; maxLevel: number }> = [];
 
   for (let i = 0; i < all.length; i++) {
-    if (hasText && !searchIndex[i].includes(lq)) continue;
     const song = all[i];
     let charts = song.charts;
 
-    if (hasDiff)
-      charts = charts.filter(c => diffSet.has(c.difficulty));
+    if (hasDiff) charts = charts.filter(c => diffSet.has(c.difficulty));
 
     if (quick_level !== undefined) {
       charts = charts.filter(c => c.level >= quick_level && c.level < quick_level + 1);
@@ -47,8 +42,7 @@ function applyFilter(all: Song[], query: SongQuery, searchIndex: string[]): Song
       charts = charts.filter(c => c.level >= level_min && c.level <= level_max);
     }
 
-    if (hasTag)
-      charts = charts.filter(c => tags.every(t => c.tags.some(ct => ct.name === t)));
+    if (hasTag) charts = charts.filter(c => tags.every(t => c.tags.some(ct => ct.name === t)));
 
     if (charts.length === 0) continue;
 
@@ -71,38 +65,48 @@ export default function SongList() {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [loading,  setLoading]  = useState(true);
 
-  useEffect(() => { fetchMeta().then(setMeta).catch(console.error); }, []);
   useEffect(() => {
-    let cancelled = false;
-    fetchSongs({})
-      .then(({ songs }) => {
-        if (!cancelled) startTransition(() => setAllSongs(songs));
-      })
-      .catch(console.error)
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    const ctrl = new AbortController();
+    fetchMeta(ctrl.signal).then(setMeta).catch((e) => {
+      if (e?.name !== "AbortError") console.error(e);
+    });
+    return () => ctrl.abort();
   }, []);
 
-  const searchIndex = useMemo(
-    () => buildSearchIndex(allSongs, (s) => `${s.title} ${s.artist} ${s.keywords ?? ""}`),
-    [allSongs],
-  );
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchSongs({ q: query.q || undefined }, ctrl.signal)
+      .then(({ songs }) => {
+        startTransition(() => setAllSongs(songs));
+      })
+      .catch((e) => {
+        if (e?.name !== "AbortError") console.error(e);
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false);
+      });
+    return () => ctrl.abort();
+  }, [query.q]);
 
   const deferredQuery = useDeferredValue(query);
   const isPending     = query !== deferredQuery;
   const songs = useMemo(
-    () => applyFilter(allSongs, deferredQuery, searchIndex),
-    [allSongs, deferredQuery, searchIndex],
+    () => applyFilter(allSongs, deferredQuery),
+    [allSongs, deferredQuery],
   );
 
   const titleTargets = useMemo(() => {
     const map = new Map<number, number>();
     for (const s of songs) {
-      const top = s.charts.reduce<Song["charts"][0] | null>(
-        (best, c) => (!best || c.level > best.level ? c : best),
-        null,
-      );
-      if (top) map.set(s.id, top.id);
+      let topId = s.charts[0]?.id;
+      let topLevel = s.charts[0]?.level ?? -1;
+      for (let i = 1; i < s.charts.length; i++) {
+        if (s.charts[i].level > topLevel) {
+          topLevel = s.charts[i].level;
+          topId = s.charts[i].id;
+        }
+      }
+      if (topId !== undefined) map.set(s.id, topId);
     }
     return map;
   }, [songs]);

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchChart } from "../api/client";
 import type { ChartDetailDto, ChartPart } from "../types";
@@ -66,10 +66,20 @@ export default function ChartDetail() {
     fetchChart(Number(id)).then(setData).catch(console.error);
   }, [id]);
 
+  const countsByPart = useMemo(() => {
+    const m: Record<ChartPart, number> = { intro: 0, outro: 0, main: 0, alt: 0 };
+    if (data) for (const img of data.images) m[img.part]++;
+    return m;
+  }, [data]);
+
+  const partImages = useMemo(
+    () => (data ? data.images.filter((img) => img.part === activePart) : []),
+    [data, activePart],
+  );
+
   if (!data) return <div className="detail-shell">불러오는 중…</div>;
-  const { song, difficulty, images, tags } = data;
+  const { song, difficulty, tags } = data;
   const jacketUrl = data.jacket_url || song.jacket_url;
-  const partImages = images.filter((img) => img.part === activePart);
 
   return (
     <div className="detail-shell">
@@ -87,7 +97,11 @@ export default function ChartDetail() {
           loading="eager"
           decoding="sync"
           {...({ fetchpriority: "high" } as any)}
-          onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }}
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (img.src.endsWith("/no-jacket.png")) return;
+            img.src = "/no-jacket.png";
+          }}
         />
         <div>
           <h1>{song.title}</h1>
@@ -114,8 +128,8 @@ export default function ChartDetail() {
 
       <div className="part-selector">
         {PARTS.map(({ key, label }) => {
-          const hasImages = images.some((img) => img.part === key);
-          const count = images.filter((img) => img.part === key).length;
+          const count = countsByPart[key];
+          const hasImages = count > 0;
           return (
             <button
               key={key}

@@ -49,13 +49,17 @@ export default function FilterSidebar({ meta, query, setQuery }) {
         if (debounceRef.current)
             clearTimeout(debounceRef.current);
     }, [query.q]);
+    useEffect(() => () => {
+        if (debounceRef.current)
+            clearTimeout(debounceRef.current);
+    }, []);
     const onSearchChange = (val) => {
         setLocalSearch(val);
         if (debounceRef.current)
             clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
             setQuery({ ...query, q: val });
-        }, 120);
+        }, 200);
     };
     const onLevelMin = (v) => setQuery({ ...query, level_min: clamp(v, 1, query.level_max) });
     const onLevelMax = (v) => setQuery({ ...query, level_max: clamp(v, query.level_min, 20.9) });
@@ -69,7 +73,7 @@ export default function FilterSidebar({ meta, query, setQuery }) {
         quick_level: undefined,
         q: "",
     });
-    return (_jsxs("aside", { className: "sidebar", children: [_jsxs("div", { className: "row-header", children: [_jsx("h3", { children: "\uD544\uD130" }), _jsx("button", { className: "reset-btn", onClick: onReset, children: "\u21BA \uCD08\uAE30\uD654" })] }), _jsx("div", { className: "section-label", children: "\uAC80\uC0C9" }), _jsx("input", { className: "search-input sidebar-search", placeholder: "\uC81C\uBAA9 / \uC544\uD2F0\uC2A4\uD2B8 / \uD0A4\uC6CC\uB4DC", value: localSearch, onChange: (e) => onSearchChange(e.target.value) }), _jsx("div", { className: "section-label", children: "\uB808\uBCA8" }), _jsxs("div", { className: "level-range", children: [_jsx(LevelStepper, { value: query.level_min, onChange: onLevelMin }), _jsx("span", { className: "level-tilde", children: "~" }), _jsx(LevelStepper, { value: query.level_max, onChange: onLevelMax })] }), _jsx("div", { className: "section-label", children: "\uB09C\uC774\uB3C4" }), _jsx("div", { className: "chip-row", style: { minHeight: 28 }, children: (meta?.difficulties ?? []).map((d) => (_jsx("button", { "data-diff": d, className: `chip diff ${query.difficulties.includes(d) ? "active" : ""}`, onClick: () => onDiff(d), children: d }, d))) }), _jsx("div", { className: "section-label", children: "\uD0DC\uADF8" }), _jsx("div", { className: "chip-row", style: { minHeight: 56 }, children: (meta?.tags ?? []).map((t) => (_jsx("button", { className: `chip tag ${query.tags.includes(t) ? "active" : ""}`, onClick: () => onTag(t), children: t }, t))) })] }));
+    return (_jsxs("aside", { className: "sidebar", children: [_jsxs("div", { className: "row-header", children: [_jsx("h3", { children: "\uD544\uD130" }), _jsx("button", { className: "reset-btn", onClick: onReset, children: "\u21BA \uCD08\uAE30\uD654" })] }), _jsx("div", { className: "section-label", children: "\uAC80\uC0C9" }), _jsx("input", { className: "search-input sidebar-search", type: "search", placeholder: "\uC81C\uBAA9 / \uC544\uD2F0\uC2A4\uD2B8 / \uD0A4\uC6CC\uB4DC", value: localSearch, onChange: (e) => onSearchChange(e.target.value) }), _jsx("div", { className: "section-label", children: "\uB808\uBCA8" }), _jsxs("div", { className: "level-range", children: [_jsx(LevelStepper, { value: query.level_min, onChange: onLevelMin }), _jsx("span", { className: "level-tilde", children: "~" }), _jsx(LevelStepper, { value: query.level_max, onChange: onLevelMax })] }), _jsx("div", { className: "section-label", children: "\uB09C\uC774\uB3C4" }), _jsx("div", { className: "chip-row", style: { minHeight: 28 }, children: (meta?.difficulties ?? []).map((d) => (_jsx("button", { "data-diff": d, className: `chip diff ${query.difficulties.includes(d) ? "active" : ""}`, onClick: () => onDiff(d), children: d }, d))) }), _jsx("div", { className: "section-label", children: "\uD0DC\uADF8" }), _jsx("div", { className: "chip-row", style: { minHeight: 56 }, children: (meta?.tags ?? []).map((t) => (_jsx("button", { className: `chip tag ${query.tags.includes(t) ? "active" : ""}`, onClick: () => onTag(t), children: t }, t))) })] }));
 }
 function clamp(v, lo, hi) {
     if (Number.isNaN(v))

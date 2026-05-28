@@ -28,8 +28,9 @@ function loadPicks(): { self: (Song | null)[]; opp: (Song | null)[] } {
 
 export default function Megamix() {
   const nav = useNavigate();
-  const [self, setSelf] = useState<(Song | null)[]>(() => loadPicks().self);
-  const [opp,  setOpp]  = useState<(Song | null)[]>(() => loadPicks().opp);
+  const initialPicks = useRef(loadPicks());
+  const [self, setSelf] = useState<(Song | null)[]>(initialPicks.current.self);
+  const [opp,  setOpp]  = useState<(Song | null)[]>(initialPicks.current.opp);
   const [picker,    setPicker]    = useState<{ side: Side; idx: number } | null>(null);
   const [searchQ,   setSearchQ]   = useState("");
   const [results,   setResults]   = useState<Song[]>([]);
@@ -138,7 +139,11 @@ export default function Megamix() {
             <div className="slot-song">
               <img className="slot-jacket" src={song.jacket_url || "/no-jacket.png"} alt=""
                 width={95} height={95} loading="lazy" decoding="async"
-                onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
+                onError={(e) => {
+                  const t = e.currentTarget;
+                  if (t.src.endsWith("/no-jacket.png")) return;
+                  t.src = "/no-jacket.png";
+                }} />
               <div className="slot-info">
                 <div className="slot-title">{song.title}</div>
                 <div className="slot-artist">{song.artist}</div>
@@ -196,7 +201,11 @@ export default function Megamix() {
                     >
                       <img className="picker-jacket" src={s.jacket_url || "/no-jacket.png"} alt=""
                         width={36} height={36} loading="lazy" decoding="async"
-                        onError={(e) => { e.currentTarget.src = "/no-jacket.png"; }} />
+                        onError={(e) => {
+                  const t = e.currentTarget;
+                  if (t.src.endsWith("/no-jacket.png")) return;
+                  t.src = "/no-jacket.png";
+                }} />
                       <div className="picker-meta">
                         <div className="picker-title">{s.title}</div>
                         <div className="picker-artist">{s.artist}</div>
