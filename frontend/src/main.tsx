@@ -35,5 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    <SpeedInsights />
+    <Analytics />
   </React.StrictMode>
 );
