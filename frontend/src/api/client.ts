@@ -13,8 +13,10 @@ function toParams(q: Partial<SongQuery>): string {
   return p.toString();
 }
 
+const PUBLIC_INIT: RequestInit = { credentials: "omit" };
+
 export async function fetchMeta(signal?: AbortSignal): Promise<FilterMeta> {
-  const r = await fetch(`${API_BASE}/api/meta`, { signal });
+  const r = await fetch(`${API_BASE}/api/meta`, { ...PUBLIC_INIT, signal });
   if (!r.ok) throw new Error(`meta ${r.status}`);
   return r.json();
 }
@@ -23,7 +25,8 @@ export async function fetchSongs(
   q: Partial<SongQuery>,
   signal?: AbortSignal,
 ): Promise<{ songs: Song[]; total: number }> {
-  const r = await fetch(`${API_BASE}/api/songs?${toParams(q)}`, { signal });
+  const qs = toParams(q);
+  const r = await fetch(`${API_BASE}/api/songs${qs ? `?${qs}` : ""}`, { ...PUBLIC_INIT, signal });
   if (!r.ok) throw new Error(`songs ${r.status}`);
   const songs: Song[] = await r.json();
   const total = parseInt(r.headers.get("X-Total-Count") ?? String(songs.length), 10);
@@ -33,7 +36,7 @@ export async function fetchSongs(
 export async function fetchSong(id: number, signal?: AbortSignal): Promise<Song> {
   const cached = _songCache.get(id);
   if (cached) return cached;
-  const r = await fetch(`${API_BASE}/api/songs/${id}`, { signal });
+  const r = await fetch(`${API_BASE}/api/songs/${id}`, { ...PUBLIC_INIT, signal });
   if (!r.ok) throw new Error(`song ${r.status}`);
   const data: Song = await r.json();
   _songCache.set(id, data);
@@ -43,7 +46,7 @@ export async function fetchSong(id: number, signal?: AbortSignal): Promise<Song>
 export async function fetchChart(id: number, signal?: AbortSignal): Promise<ChartDetailDto> {
   const cached = _chartCache.get(id);
   if (cached) return cached;
-  const r = await fetch(`${API_BASE}/api/charts/${id}`, { signal });
+  const r = await fetch(`${API_BASE}/api/charts/${id}`, { ...PUBLIC_INIT, signal });
   if (!r.ok) throw new Error(`chart ${r.status}`);
   const data: ChartDetailDto = await r.json();
   _chartCache.set(id, data);

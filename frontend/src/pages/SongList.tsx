@@ -209,7 +209,7 @@ export default function SongList() {
                 <SongRow
                   song={s}
                   titleTargetChartId={titleTargets.get(s.id) ?? s.charts[0]?.id}
-                  priority={vi.index < 3}
+                  priority={vi.index === 0}
                 />
               </div>
             );
