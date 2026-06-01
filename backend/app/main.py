@@ -124,8 +124,19 @@ async def security_headers(request: Request, call_next):
     return response
 
 Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(admin_router)
+
+
+@app.get("/uploads/{path:path}", include_in_schema=False)
+async def serve_upload(path: str):
+    base = Path(UPLOAD_DIR).resolve()
+    target = (base / path).resolve()
+    if not target.is_relative_to(base) or not target.is_file():
+        raise HTTPException(404)
+    return FileResponse(
+        target,
+        headers={"Cache-Control": "public, max-age=86400, stale-while-revalidate=604800"},
+    )
 
 _FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
