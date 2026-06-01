@@ -27,18 +27,18 @@ ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 _EXT_TO_MIME = {
-    ".png":  "image/png",
-    ".jpg":  "image/jpeg",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
-    ".gif":  "image/gif",
+    ".gif": "image/gif",
 }
 
 _MAGIC_SIGNATURES = (
-    (b"\x89PNG\r\n\x1a\n",                 "image/png"),
-    (b"\xff\xd8\xff",                       "image/jpeg"),
-    (b"GIF87a",                              "image/gif"),
-    (b"GIF89a",                              "image/gif"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
 )
 
 
