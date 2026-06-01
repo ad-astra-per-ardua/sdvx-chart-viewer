@@ -23,6 +23,7 @@ backend/.env
 *.sqlite3
 backend/data/
 backend/uploads/
+data/logs/
 
 # ── Node / Frontend ──────────────────────────────────────────────────────────
 node_modules/

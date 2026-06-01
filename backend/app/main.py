@@ -18,7 +18,9 @@ from .database import engine, Base, get_db
 from .limiter import limiter
 from . import models, schemas, cache as song_cache
 from .admin import router as admin_router, UPLOAD_DIR
+from . import logging_setup
 
+logging_setup.configure()
 Base.metadata.create_all(bind=engine)
 
 logger = logging.getLogger("sdvx.security")
@@ -92,7 +94,6 @@ async def csrf_origin_guard(request: Request, call_next):
     if request.method in _MUTATING_METHODS and request.url.path.startswith("/api/admin"):
         origin = request.headers.get("origin")
         if not origin:
-            # Fall back to Referer for clients that strip Origin (rare browsers).
             referer = request.headers.get("referer", "")
             if not referer or not any(referer.startswith(o + "/") or referer == o for o in _ALLOWED_ORIGIN_SET):
                 ip = request.client.host if request.client else "unknown"
@@ -138,7 +139,6 @@ async def favicon():
 
 
 def _escape_like(s: str) -> str:
-    # Escape LIKE metacharacters so user input is treated literally.
     return s.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
