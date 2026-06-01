@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 import orjson
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -41,7 +41,7 @@ def _run_inline_migrations() -> None:
                 conn.commit()
         except Exception as e:
             msg = str(e).lower()
-            if "already exists" not in msg and "duplicate" not in msg and "no such column" not in msg:
+            if "already exists" not in msg and "duplicate" not in msg and "no such column" not in msg and "does not exist" not in msg:
                 logger.warning("Migration warning [%s]: %s", stmt[:40], e)
 
 
@@ -125,6 +125,16 @@ async def security_headers(request: Request, call_next):
 Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(admin_router)
+
+_FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    f = _FRONTEND_DIST / "favicon.ico"
+    if f.exists():
+        return FileResponse(f)
+    raise HTTPException(404)
 
 
 def _escape_like(s: str) -> str:
@@ -325,3 +335,14 @@ def get_chart(request: Request, chart_id: int, response: Response, db: Session =
             "jacket_url": song_jacket, "created_at": base[7], "charts": all_charts,
         },
     }
+
+
+if _FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIST / "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        static = _FRONTEND_DIST / full_path
+        if static.is_file():
+            return FileResponse(static)
+        return FileResponse(_FRONTEND_DIST / "index.html")
