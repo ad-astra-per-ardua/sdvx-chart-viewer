@@ -1,19 +1,9 @@
-"""Import data.json into DB (full reset + reimport).
-
-Usage — 로컬 SQLite (기본):
-  python backend/scripts/import_songs.py data.json
-
-Usage — 운영 Supabase:
-  DATABASE_URL=postgresql+psycopg2://postgres:pw@db.xxx.supabase.co:5432/postgres \
-    python backend/scripts/import_songs.py data.json
-"""
 import json
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# backend/ 디렉토리를 경로에 추가해 app.database를 import 가능하게 함
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
@@ -55,7 +45,7 @@ def main() -> None:
 
     db_url = os.getenv("DATABASE_URL", _DEFAULT_DB)
     out(f"Reading: {data_path}")
-    out(f"DB:      {db_url.split('@')[-1] if '@' in db_url else db_url}")  # 비밀번호 숨김
+    out(f"DB:      {db_url.split('@')[-1] if '@' in db_url else db_url}")
 
     with open(data_path, encoding="utf-8") as f:
         data = json.load(f)
