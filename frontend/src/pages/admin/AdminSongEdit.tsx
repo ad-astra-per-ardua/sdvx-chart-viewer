@@ -105,7 +105,6 @@ export default function AdminSongEdit() {
           });
         })
       );
-      // 클라이언트 캐시 무효화 (이 곡의 모든 채보)
       song.charts.forEach((c) => invalidateChartCache(c.id));
       invalidateSongCache(song.id);
       await reloadSong(song.id);
@@ -298,7 +297,6 @@ function ChartCard({ chart, level, tagIds, jacketUrl, onLevelChange, onTagIdsCha
     try {
       const baseIdx = images.filter((img) => img.part === activePart).length;
       const fileArr = Array.from(files);
-      // 병렬 업로드
       const urls = await Promise.all(fileArr.map((f) => adminUpload(f).then((r) => r.url)));
       await Promise.all(
         urls.map((url, i) =>

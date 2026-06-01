@@ -104,7 +104,6 @@ def _cookie_kwargs(request: Request, *, with_max_age: bool) -> dict:
         key=COOKIE_NAME,
         httponly=True,
         secure=secure,
-        # Same-origin via vercel rewrite → "lax" blocks third-party CSRF while preserving normal nav.
         samesite="lax",
         path="/api/admin",
     )
@@ -128,7 +127,6 @@ def require_admin(request: Request) -> None:
 def login(request: Request, response: Response, payload: dict):
     token = (payload or {}).get("token", "")
     expected = _admin_token()
-    # Always do compare_digest to keep timing constant even when input is the wrong type / length.
     ok = isinstance(token, str) and secrets.compare_digest(token, expected)
     if not ok:
         ip = request.client.host if request.client else "unknown"

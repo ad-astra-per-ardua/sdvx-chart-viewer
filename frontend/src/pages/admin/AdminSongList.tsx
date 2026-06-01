@@ -16,9 +16,6 @@ interface RowProps {
 }
 
 const AdminSongRow = memo(function AdminSongRow({ song, onDelete }: RowProps) {
-  // Memoize tag de-duplication: the same song object stays referentially stable
-  // across filter passes, so this Map build pays its cost exactly once per song
-  // rather than on every parent render.
   const tags = useMemo(
     () => [...new Map(
       song.charts.flatMap((c) => c.tags).map((t) => [t.id, t]),
